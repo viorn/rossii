@@ -16,6 +16,7 @@ import { ToolCallBlock } from "./tool-call-block";
 import { parseToolCommand } from "./tool-call-block";
 import { toolCallPayload, toolDetailFromRawInput } from "./tool-call-content";
 import { parseAvailableCommands } from "./slash-commands";
+import { beginTurn } from "./turn-separator";
 import { answerLabel, formatCost, markdownTheme } from "./chat-context";
 import type { ChatContext } from "./chat-context";
 import type { SessionNotification } from "./types";
@@ -226,6 +227,10 @@ export function handleSessionUpdate(ctx: ChatContext, notification: SessionNotif
           closeUser(ctx);
         }
         if (!ctx.userLine) {
+          // A replayed user message opens a turn, so the dashed rule appears in
+          // a resumed conversation exactly as it did live. A steer (`sId`) is
+          // part of the turn it was sent into, not a new one.
+          if (!sId) beginTurn(ctx);
           ctx.userLine = new Text("", 1, 0);
           ctx.transcript.addChild(ctx.userLine);
           ctx.userBuffer = "";

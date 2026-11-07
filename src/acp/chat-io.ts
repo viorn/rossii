@@ -25,6 +25,7 @@ import {
 import { cancelAllPermissions } from "./chat-handlers";
 import { handleCommand } from "./chat-config";
 import { renameCurrentSession } from "./chat-session";
+import { beginTurn } from "./turn-separator";
 import { steerSession } from "./custom";
 import type { ChatContext, PendingSteer } from "./chat-context";
 import type { PromptResponse } from "./types";
@@ -245,7 +246,11 @@ export async function submitPrompt(ctx: ChatContext, text: string, attempt = 0):
   ctx.cancelRequested = false;
   ctx.activeRunId = null;
   ctx.lastAgentActivity = Date.now();
-  if (attempt === 0) ctx.transcript.addChild(new Text(pc.bold(`❯ ${text}`), 1, 0));
+  if (attempt === 0) {
+    // The dashed rule that closes the previous exchange, then this question.
+    beginTurn(ctx);
+    ctx.transcript.addChild(new Text(pc.bold(`❯ ${text}`), 1, 0));
+  }
   ctx.currentMd = null;
   ctx.currentMessageId = null;
   ctx.streamBuffer = "";

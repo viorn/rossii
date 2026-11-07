@@ -118,6 +118,9 @@ set/provider/model from the project's history, and keeps everything changeable f
   command of a tool call sits under its bar. `ROSSII_ACP_BLOCKS` picks another behaviour —
   `live`, `open`, `done` (see [Thinking and tool blocks](#thinking-and-tool-blocks)). The
   status bar tracks the current set, context usage, tokens and cost.
+- **Turns** — a new question opens with a dim dashed rule, so a long session reads as separate
+  exchanges instead of one wall of text; the first exchange of a session goes without it, and a
+  replayed history (`session/load`) gets the same rules as the live conversation did.
 - **Its own screen** — the chat owns the alternate screen and scrolls the transcript itself
   (mouse wheel, PgUp/PgDn, Ctrl+Shift+F to search) while the composer stays pinned at the bottom.
   Streaming never yanks the view back. On exit the transcript is printed to the normal screen, so
@@ -443,6 +446,7 @@ rossii (Bun + pi-tui) ── stdio JSON-RPC 2.0 ──> goose acp
 | `src/acp/command-complete.ts` | the composer's `/…` completion menu: the chat's commands plus goose's announced ones |
 | `src/acp/overlay.ts` | framed and searchable overlay components |
 | `src/acp/block-mode.ts` | `ROSSII_ACP_BLOCKS`: when the thinking and tool blocks are open |
+| `src/acp/turn-separator.ts` | the dashed rule between two turns |
 | `src/acp/thought.ts` | the collapsible thinking block (`/think`) |
 | `src/acp/tool-call-block.ts` | the collapsible tool call block (`/tool`) |
 | `src/acp/tool-call-content.ts` | the wire shapes behind a tool block (content, diffs, live output) |

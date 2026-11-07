@@ -153,6 +153,12 @@ warns in the TUI and keeps the ACP default.
   transcript back to the normal screen, so scrollback keeps the conversation.
   `ROSSII_CHAT_MAIN_SCREEN=1` switches back to `TuiMainScreen` (inline; the terminal owns
   scrollback, so any repaint — spinner, streamed chunk — pulls the view to the bottom)
+- Turn separator (`src/acp/turn-separator.ts`, unit-tested): `beginTurn(ctx)` draws a dim dashed
+  rule (`┈` × width, 256-colour 242, one-column indent) before every turn after the first and bumps
+  `ctx.turnsStarted`. Called from `submitPrompt` (live, next to the `❯ …` echo) and from the
+  `user_message_chunk` replay path in `chat-stream.ts` — but NOT for a steer (`steerChunkId`), which
+  belongs to the turn it was sent into. It is a `Component`, not a `Text`, because only
+  `render(width)` knows the transcript width (alternate screen vs inline, terminal resize).
 - Collapsible blocks (`src/acp/block-mode.ts`, pure + unit-tested): `ROSSII_ACP_BLOCKS` decides the
   **automatic** expanded state of the thought blocks and the tool-call blocks — `live` (`1`)
   expanded while chunks arrive and collapsed on `setFinished()`, `open` (`2`) always expanded,

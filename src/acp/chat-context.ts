@@ -239,6 +239,12 @@ export interface ChatContext {
   answerChars: number;
   currentThought: ThoughtBlock | null;
   thoughtBlocks: ThoughtBlock[];
+  /**
+   * How many turns this transcript has shown. `beginTurn()` draws the dashed
+   * separator between turns only, so the first exchange of a session goes
+   * without one (see ./turn-separator.ts).
+   */
+  turnsStarted: number;
   userLine: Text | null;
   userBuffer: string;
   userMessageId: string | null;
@@ -369,6 +375,7 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
     answerChars: 0,
     currentThought: null,
     thoughtBlocks: [],
+    turnsStarted: 0,
     userLine: null,
     userBuffer: "",
     userMessageId: null,
