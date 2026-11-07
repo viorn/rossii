@@ -442,6 +442,7 @@ rossii (Bun + pi-tui) ── stdio JSON-RPC 2.0 ──> goose acp
 | `src/acp/slash-commands.ts` | which `/…` is the chat's and which goes to goose (`/compact`, `/clear`, recipes, skills) |
 | `src/acp/command-complete.ts` | the composer's `/…` completion menu: the chat's commands plus goose's announced ones |
 | `src/acp/overlay.ts` | framed and searchable overlay components |
+| `src/acp/block-mode.ts` | `ROSSII_ACP_BLOCKS`: when the thinking and tool blocks are open |
 | `src/acp/thought.ts` | the collapsible thinking block (`/think`) |
 | `src/acp/tool-call-block.ts` | the collapsible tool call block (`/tool`) |
 | `src/acp/tool-call-content.ts` | the wire shapes behind a tool block (content, diffs, live output) |

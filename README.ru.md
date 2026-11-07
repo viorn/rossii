@@ -437,6 +437,7 @@ rossii (Bun + pi-tui) ── stdio JSON-RPC 2.0 ──> goose acp
 | `src/acp/slash-commands.ts` | какая `/…` команда чата, а какая уходит goose (`/compact`, `/clear`, рецепты, скиллы) |
 | `src/acp/command-complete.ts` | меню дополнения `/…` в композере: команды чата плюс объявленные goose |
 | `src/acp/overlay.ts` | рамные и поисковые оверлеи |
+| `src/acp/block-mode.ts` | `ROSSII_ACP_BLOCKS`: когда блоки размышлений и инструментов развёрнуты |
 | `src/acp/thought.ts` | сворачиваемый блок размышлений (`/think`) |
 | `src/acp/tool-call-block.ts` | сворачиваемый блок вызова инструмента (`/tool`) |
 | `src/acp/tool-call-content.ts` | формы данных, из которых собирается блок вызова (контент, диффы, живой вывод) |
