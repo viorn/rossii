@@ -118,6 +118,8 @@ set/provider/model from the project's history, and keeps everything changeable f
   call is a collapsible block too: one chrome line (status icon · tool name · char count · hint)
   followed by the full command, with the output revealed on expand (a left click or `/tool`); the
   bar tracks the current set, context usage, tokens and cost.
+  `ROSSII_ACP_BLOCKS` picks the other behaviours (`open`, `done`, `closed` — see
+  [Thinking and tool blocks](#thinking-and-tool-blocks)).
 - **Its own screen** — the chat owns the alternate screen and scrolls the transcript itself
   (mouse wheel, PgUp/PgDn, Ctrl+Shift+F to search) while the composer stays pinned at the bottom.
   Streaming never yanks the view back. On exit the transcript is printed to the normal screen, so
@@ -137,6 +139,26 @@ set/provider/model from the project's history, and keeps everything changeable f
   `sessions.db`, so sessions created by `goose` itself are listed too.
 - **Watchdogs** — a silent agent (no update for 5 minutes) is cancelled, and one turn is capped at
   4 hours. Both are configurable, both can be disabled.
+
+### Thinking and tool blocks
+
+Both block kinds behave the same way, and `ROSSII_ACP_BLOCKS` decides *when* they are open —
+a value can be a name or its number:
+
+| Value | While chunks arrive | Once the block is finished |
+|-------|---------------------|----------------------------|
+| `live` (`1`, default) | expanded | collapsed |
+| `open` (`2`) | expanded | expanded |
+| `done` (`3`) | collapsed | expanded |
+| `closed` (`4`) | collapsed | collapsed |
+
+`live` is what rossii always did: the reasoning/tool output is visible as it streams and folds
+into a one-line bar afterwards. A long turn with many tool calls pushes the transcript around less
+with `done` or `closed`.
+
+The mode only sets the *automatic* state — a click, `/think expand|collapse` and
+`/tool expand|collapse` still win, and the choice sticks for that block. An unusable value warns in
+the chat and keeps `live`.
 
 ### Slash commands
 
@@ -380,6 +402,7 @@ but the one that built them.
 | `ROSSII_ACP_IDLE_TIMEOUT_MS` | `300000` | cancel a turn when the agent sends nothing for this long (`0` disables) |
 | `ROSSII_ACP_PROMPT_TIMEOUT_MS` | `14400000` | absolute cap on a single turn (`0` disables) |
 | `ROSSII_ACP_STEER` | `1` | `0` disables steering: Enter during a turn adds nothing to it |
+| `ROSSII_ACP_BLOCKS` | `live` | when the thinking and tool blocks are open: `live` \| `open` \| `done` \| `closed` (or `1`–`4`) |
 | `ROSSII_CHAT_MAIN_SCREEN` | unset | `1` renders the chat inline instead of on the alternate screen |
 | `ROSSII_NO_WORKTREE` | set by default | `1` skips worktree creation |
 | `ROSSII_FORCE_WORKTREE` | unset | `1` forces worktrees (overrides the above) |

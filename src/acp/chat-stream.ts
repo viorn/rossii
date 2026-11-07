@@ -245,6 +245,8 @@ export function handleSessionUpdate(ctx: ChatContext, notification: SessionNotif
             // Only the alternate screen captures the mouse; on the main screen
             // the bar points at `/think` instead of promising a click.
             clickable: ctx.altScreen,
+            // `ROSSII_ACP_BLOCKS`: live / open / done / closed.
+            mode: ctx.blockMode,
           });
           ctx.transcript.addChild(ctx.currentThought);
         }
@@ -268,6 +270,8 @@ export function handleSessionUpdate(ctx: ChatContext, notification: SessionNotif
         // Only the alternate screen captures the mouse; on the main screen the
         // bar points at `/tool` instead of promising a click.
         clickable: ctx.altScreen,
+        // `ROSSII_ACP_BLOCKS`: live / open / done / closed.
+        mode: ctx.blockMode,
       });
       if (!existing) {
         ctx.toolCallBlocks.set(update.toolCallId, block);

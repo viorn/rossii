@@ -123,9 +123,9 @@ export function startChat(ctx: ChatContext): void {
   ctx.tui.setFocus(ctx.editor);
   renderHeader(ctx);
   renderStatus(ctx);
-  const timeoutWarnings = [ctx.idleTimeout.invalid, ctx.turnTimeout.invalid]
+  const settingWarnings = [ctx.idleTimeout.invalid, ctx.turnTimeout.invalid, ctx.blockModeInvalid]
     .filter((warning): warning is string => warning !== null);
-  for (const warning of [...timeoutWarnings, ...(ctx.steeringWarning ? [ctx.steeringWarning] : [])]) {
+  for (const warning of [...settingWarnings, ...(ctx.steeringWarning ? [ctx.steeringWarning] : [])]) {
     ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${warning}`), 1, 0));
   }
   ctx.transcript.addChild(new Text(

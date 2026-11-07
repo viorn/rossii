@@ -1,10 +1,11 @@
 /**
  * Collapsible tool call block rendered inside the ACP chat.
  *
- * A block that is currently streaming starts expanded so the tool output is
- * visible while it arrives. On `setFinished()` it collapses to a bar — unless
- * the user toggled it by hand or through `/tool`, in which case that choice
- * wins. A left click (alternate screen) or `/tool` expands it again.
+ * The automatic expanded/collapsed state comes from `ROSSII_ACP_BLOCKS`
+ * (./block-mode.ts): `live` (default) starts expanded while the output streams
+ * and collapses on `setFinished()`; `open` stays expanded; `done` stays
+ * collapsed while chunks arrive and expands when they stop; `closed` never
+ * expands. A manual toggle — a left click or `/tool` — outranks the mode.
  *
  * The bar carries only the "chrome" (`✅ · shell · 1.2k chars · click to
  * expand`); the command itself goes on the following line(s), wrapped. goose's
@@ -29,6 +30,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { formatCharCount, hintAccent } from "../utils";
+import { DEFAULT_BLOCK_MODE, endsExpanded, startsExpanded, type BlockMode } from "./block-mode";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -142,6 +144,11 @@ export interface ToolCallBlockOptions {
    * hint points at `/tool` there instead of promising a click that never comes.
    */
   clickable?: boolean;
+  /**
+   * `ROSSII_ACP_BLOCKS` mode (./block-mode.ts) — decides whether the block is
+   * expanded while streaming and after it finished. Defaults to `live`.
+   */
+  mode?: BlockMode;
 }
 
 export class ToolCallBlock implements Component {
@@ -151,8 +158,8 @@ export class ToolCallBlock implements Component {
   private chars = 0;
   /** Whether streaming is still producing chunks. */
   private finished = false;
-  /** Whether the block is currently expanded (live blocks start expanded). */
-  private expanded = true;
+  /** Whether the block is currently expanded (see the `mode` option). */
+  private expanded: boolean;
   /** A manual toggle outranks the automatic collapse on finish. */
   private userToggled = false;
   /** Live markdown view, created on the first chunk. */
@@ -164,10 +171,13 @@ export class ToolCallBlock implements Component {
   private _detail?: string;
   private onToggle?: (expanded: boolean) => void;
   private clickable: boolean;
+  private mode: BlockMode;
 
   constructor(options?: ToolCallBlockOptions) {
     this.onToggle = options?.onToggle;
     this.clickable = options?.clickable ?? true;
+    this.mode = options?.mode ?? DEFAULT_BLOCK_MODE;
+    this.expanded = startsExpanded(this.mode);
   }
 
   /** Set the tool title (`shell · <truncated command>`). */
@@ -210,12 +220,14 @@ export class ToolCallBlock implements Component {
   }
 
   /**
-   * Mark the block as finished (no more chunks coming). A block the user never
-   * touched collapses now; the live-expanded default is not a user choice.
+   * Mark the block as finished (no more chunks coming). The block then takes
+   * the mode's resting state (`live`/`closed` collapse, `open`/`done` expand);
+   * a manual toggle outranks it, because the automatic state is not a user
+   * choice.
    */
   setFinished(): void {
     this.finished = true;
-    if (!this.userToggled) this.expanded = false;
+    if (!this.userToggled) this.expanded = endsExpanded(this.mode);
   }
 
   /** Whether the block has already been finished (a cancelled turn closes them all). */

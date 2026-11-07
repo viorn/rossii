@@ -1,11 +1,12 @@
 /**
  * Collapsible thought / reasoning block rendered inside the ACP chat.
  *
- * The block that is currently streaming starts expanded, so the reasoning is
- * visible while the model is producing it (the pre-collapse behaviour). On
- * `setFinished()` it collapses to a single-line bar — unless the user toggled
- * it by hand or through `/think`, in which case that choice wins. A left click
- * (alternate screen) or `/think` expands it again.
+ * The automatic expanded/collapsed state comes from `ROSSII_ACP_BLOCKS`
+ * (./block-mode.ts): `live` (default) starts expanded while streaming and
+ * collapses on `setFinished()`; `open` stays expanded; `done` stays collapsed
+ * while chunks arrive and expands when they stop; `closed` never expands. A
+ * manual toggle — a left click (alternate screen) or `/think` — outranks the
+ * mode, which only decides the *automatic* state.
  */
 
 import pc from "picocolors";
@@ -21,6 +22,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 import { formatCharCount, hintAccent } from "../utils";
+import { DEFAULT_BLOCK_MODE, endsExpanded, startsExpanded, type BlockMode } from "./block-mode";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -113,6 +115,11 @@ export interface ThoughtBlockOptions {
    * hint points at `/think` there instead of promising a click that never comes.
    */
   clickable?: boolean;
+  /**
+   * `ROSSII_ACP_BLOCKS` mode (./block-mode.ts) — decides whether the block is
+   * expanded while streaming and after it finished. Defaults to `live`.
+   */
+  mode?: BlockMode;
 }
 
 export class ThoughtBlock implements Component {
@@ -122,8 +129,8 @@ export class ThoughtBlock implements Component {
   private chars = 0;
   /** Whether streaming is still producing chunks. */
   private finished = false;
-  /** Whether the block is currently expanded (live blocks start expanded). */
-  private expanded = true;
+  /** Whether the block is currently expanded (see the `mode` option). */
+  private expanded: boolean;
   /** A manual toggle outranks the automatic collapse on finish. */
   private userToggled = false;
   /** Live markdown view, created on the first chunk. */
@@ -131,10 +138,13 @@ export class ThoughtBlock implements Component {
 
   private onToggle?: (expanded: boolean) => void;
   private clickable: boolean;
+  private mode: BlockMode;
 
   constructor(options?: ThoughtBlockOptions) {
     this.onToggle = options?.onToggle;
     this.clickable = options?.clickable ?? true;
+    this.mode = options?.mode ?? DEFAULT_BLOCK_MODE;
+    this.expanded = startsExpanded(this.mode);
   }
 
   /** Append a streaming chunk to the buffer and refresh the live markdown. */
@@ -150,12 +160,14 @@ export class ThoughtBlock implements Component {
   }
 
   /**
-   * Mark the block as finished (no more chunks coming). A block the user never
-   * touched collapses now; the live-expanded default is not a user choice.
+   * Mark the block as finished (no more chunks coming). The block then takes
+   * the mode's resting state (`live`/`closed` collapse, `open`/`done` expand);
+   * a manual toggle outranks it, because the automatic state is not a user
+   * choice.
    */
   setFinished(): void {
     this.finished = true;
-    if (!this.userToggled) this.expanded = false;
+    if (!this.userToggled) this.expanded = endsExpanded(this.mode);
   }
 
   /** Toggle expanded / collapsed (a user action). */

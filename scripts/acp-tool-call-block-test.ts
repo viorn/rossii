@@ -153,6 +153,71 @@ ok("rounded K from 10000", () => {
   assert.ok(streaming("a".repeat(12000)).render(80)[0].includes("12k"));
 });
 
+// ─── `ROSSII_ACP_BLOCKS` modes ──────────────────────────────────────────────
+
+/** A streaming block created with an explicit mode. */
+const streamingIn = (mode: "live" | "open" | "done" | "closed"): ToolCallBlock => {
+  const block = new ToolCallBlock({ mode });
+  block.setTitle("test_tool");
+  block.setStatus("in_progress");
+  block.appendContent("output");
+  return block;
+};
+
+ok("defaults to the `live` mode when no mode is given", () => {
+  const block = streamingIn("live");
+  assert.equal(block.isExpanded, true);
+  block.setStatus("completed");
+  block.setFinished();
+  assert.equal(block.isExpanded, false);
+});
+
+ok("`open` mode stays expanded for good", () => {
+  const block = streamingIn("open");
+  assert.equal(block.isExpanded, true);
+  block.setStatus("completed");
+  block.setFinished();
+  assert.equal(block.isExpanded, true);
+  assert.ok(block.render(80).some((line) => line.includes("output")), "the output is still shown");
+});
+
+ok("`done` mode hides the stream and reveals it on finish", () => {
+  const block = streamingIn("done");
+  assert.equal(block.isExpanded, false, "nothing is shown while output arrives");
+  assert.ok(!block.render(80).some((line) => line.includes("output")));
+  block.setStatus("completed");
+  block.setFinished();
+  assert.equal(block.isExpanded, true, "the finished block opens");
+  assert.ok(block.render(80).some((line) => line.includes("output")));
+});
+
+ok("`closed` mode never expands by itself", () => {
+  const block = streamingIn("closed");
+  assert.equal(block.isExpanded, false);
+  block.setStatus("completed");
+  block.setFinished();
+  assert.equal(block.isExpanded, false);
+});
+
+ok("a manual toggle outranks every mode", () => {
+  for (const mode of ["live", "open", "done", "closed"] as const) {
+    // A click / `/tool expand` on any mode, then finish: the choice survives.
+    const opened = streamingIn(mode);
+    opened.setExpanded(false);
+    opened.setExpanded(true);
+    opened.setStatus("completed");
+    opened.setFinished();
+    assert.equal(opened.isExpanded, true, `${mode}: a manual expand sticks`);
+
+    const closed = streamingIn(mode);
+    closed.setExpanded(true);
+    closed.setExpanded(false);
+    closed.setStatus("completed");
+    closed.setFinished();
+    assert.equal(closed.isExpanded, false, `${mode}: a manual collapse sticks`);
+  }
+});
+
 // ─── Width ──────────────────────────────────────────────────────────────────
 
 ok("bars stay inside the viewport", () => {

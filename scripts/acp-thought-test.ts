@@ -4,7 +4,9 @@
  *
  * Pins the behaviour the chat relies on: the block that is currently streaming
  * is expanded and shows its reasoning live, finishing collapses it unless the
- * user toggled it by hand, and a left click toggles it.
+ * user toggled it by hand, and a left click toggles it. The four
+ * `ROSSII_ACP_BLOCKS` modes are covered at the end (the parser itself lives in
+ * scripts/acp-block-mode-test.ts).
  *
  * Usage: bun scripts/acp-thought-test.ts
  */
@@ -104,6 +106,65 @@ ok("K suffix from 1000", () => {
 
 ok("rounded K from 10000", () => {
   assert.ok(streaming("a".repeat(12000)).render(80)[0].includes("12k"));
+});
+
+// ─── `ROSSII_ACP_BLOCKS` modes ──────────────────────────────────────────────
+
+ok("defaults to the `live` mode when no mode is given", () => {
+  assert.equal(new ThoughtBlock().isExpanded, true);
+  const block = streaming("reasoning");
+  block.setFinished();
+  assert.equal(block.isExpanded, false);
+});
+
+ok("`open` mode stays expanded for good", () => {
+  const block = new ThoughtBlock({ mode: "open" });
+  block.append("reasoning");
+  assert.equal(block.isExpanded, true);
+  block.setFinished();
+  assert.equal(block.isExpanded, true);
+  assert.ok(block.render(80).length > 1, "the finished block is still open");
+});
+
+ok("`done` mode hides the stream and reveals it on finish", () => {
+  const block = new ThoughtBlock({ mode: "done" });
+  block.append("reasoning");
+  assert.equal(block.isExpanded, false, "nothing is shown while chunks arrive");
+  const live = block.render(80);
+  assert.equal(live.length, 1);
+  assert.ok(live[0].includes("click to expand"));
+  block.setFinished();
+  assert.equal(block.isExpanded, true, "the finished block opens");
+  assert.ok(block.render(80).slice(1).join("\n").includes("reasoning"));
+});
+
+ok("`closed` mode never expands by itself", () => {
+  const block = new ThoughtBlock({ mode: "closed" });
+  block.append("reasoning");
+  assert.equal(block.isExpanded, false);
+  block.setFinished();
+  assert.equal(block.isExpanded, false);
+  assert.equal(block.render(80).length, 1);
+});
+
+ok("a manual toggle outranks every mode", () => {
+  for (const mode of ["live", "open", "done", "closed"] as const) {
+    // `/think expand` on any mode, then finish: the choice survives.
+    const opened = new ThoughtBlock({ mode });
+    opened.append("reasoning");
+    opened.setExpanded(false);
+    opened.setExpanded(true);
+    opened.setFinished();
+    assert.equal(opened.isExpanded, true, `${mode}: a manual expand sticks`);
+
+    // `/think collapse` on any mode, then finish.
+    const closed = new ThoughtBlock({ mode });
+    closed.append("reasoning");
+    closed.setExpanded(true);
+    closed.setExpanded(false);
+    closed.setFinished();
+    assert.equal(closed.isExpanded, false, `${mode}: a manual collapse sticks`);
+  }
 });
 
 // ─── Width ──────────────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import type { SessionSet } from "../rossii-config";
 import { DEFAULT_PROFILE_SENTINEL } from "../rossii-config";
 import type { ThoughtBlock } from "./thought";
 import type { ToolCallBlock } from "./tool-call-block";
+import { parseBlockMode, type BlockMode } from "./block-mode";
 import type { GooseCommand } from "./slash-commands";
 import {
   DEFAULT_IDLE_TIMEOUT_MS,
@@ -299,6 +300,16 @@ export interface ChatContext {
   // ── UI flags ──
   /** False when ROSSII_CHAT_MAIN_SCREEN=1 asks for the inline renderer. */
   altScreen: boolean;
+  /**
+   * `ROSSII_ACP_BLOCKS` mode (`./block-mode.ts`) for the thought and tool
+   * blocks created from now on: `live` (default) expands while streaming and
+   * collapses on finish, `open` never collapses, `done` expands only when the
+   * chunks stop, `closed` never expands. Changing it live would leave the
+   * conversation in two styles, so it is read once at startup.
+   */
+  blockMode: BlockMode;
+  /** Warning for an unusable `ROSSII_ACP_BLOCKS` value (printed on start). */
+  blockModeInvalid: string | null;
 
   // ── Agent process ──
   /** Last stderr lines of the agent, so a crash can be explained. */
@@ -319,6 +330,9 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
   // turn does nothing, Esc is the way to add context). Anything but 0/1 warns,
   // exactly like the watchdogs: a typo must not silently change what Enter does.
   const steerSetting = env("ACP_STEER");
+  // `ROSSII_ACP_BLOCKS` decides the automatic expanded state of the thought
+  // and tool blocks; a typo warns and keeps the default (see ./block-mode.ts).
+  const blockMode = parseBlockMode(env("ACP_BLOCKS"));
   return {
     // Core flags
     busy: false,
@@ -411,6 +425,8 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
 
     // UI flags
     altScreen: env("CHAT_MAIN_SCREEN") !== "1",
+    blockMode: blockMode.mode,
+    blockModeInvalid: blockMode.invalid,
 
     // Agent process
     stderrTail: [],
