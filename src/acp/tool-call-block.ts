@@ -2,10 +2,11 @@
  * Collapsible tool call block rendered inside the ACP chat.
  *
  * The automatic expanded/collapsed state comes from `ROSSII_ACP_BLOCKS`
- * (./block-mode.ts): `live` (default) starts expanded while the output streams
- * and collapses on `setFinished()`; `open` stays expanded; `done` stays
- * collapsed while chunks arrive and expands when they stop; `closed` never
- * expands. A manual toggle — a left click or `/tool` — outranks the mode.
+ * (./block-mode.ts): `closed` (default) never expands — only the bar and the
+ * wrapped command are shown until the user opens the block; `live` starts
+ * expanded while the output streams and collapses on `setFinished()`; `open`
+ * stays expanded; `done` stays collapsed while chunks arrive and expands when
+ * they stop. A manual toggle — a left click or `/tool` — outranks the mode.
  *
  * The bar carries only the "chrome" (`✅ · shell · 1.2k chars · click to
  * expand`); the command itself goes on the following line(s), wrapped. goose's
@@ -146,7 +147,7 @@ export interface ToolCallBlockOptions {
   clickable?: boolean;
   /**
    * `ROSSII_ACP_BLOCKS` mode (./block-mode.ts) — decides whether the block is
-   * expanded while streaming and after it finished. Defaults to `live`.
+   * expanded while streaming and after it finished. Defaults to `closed`.
    */
   mode?: BlockMode;
 }

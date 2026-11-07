@@ -2,11 +2,12 @@
  * Collapsible thought / reasoning block rendered inside the ACP chat.
  *
  * The automatic expanded/collapsed state comes from `ROSSII_ACP_BLOCKS`
- * (./block-mode.ts): `live` (default) starts expanded while streaming and
- * collapses on `setFinished()`; `open` stays expanded; `done` stays collapsed
- * while chunks arrive and expands when they stop; `closed` never expands. A
- * manual toggle — a left click (alternate screen) or `/think` — outranks the
- * mode, which only decides the *automatic* state.
+ * (./block-mode.ts): `closed` (default) never expands — only the bar is shown
+ * and the user opens it; `live` starts expanded while streaming and collapses
+ * on `setFinished()`; `open` stays expanded; `done` stays collapsed while
+ * chunks arrive and expands when they stop. A manual toggle — a left click
+ * (alternate screen) or `/think` — outranks the mode, which only decides the
+ * *automatic* state.
  */
 
 import pc from "picocolors";
@@ -117,7 +118,7 @@ export interface ThoughtBlockOptions {
   clickable?: boolean;
   /**
    * `ROSSII_ACP_BLOCKS` mode (./block-mode.ts) — decides whether the block is
-   * expanded while streaming and after it finished. Defaults to `live`.
+   * expanded while streaming and after it finished. Defaults to `closed`.
    */
   mode?: BlockMode;
 }

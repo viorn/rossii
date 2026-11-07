@@ -112,14 +112,12 @@ rossii spawns `goose acp` and drives it as an ACP client. One command resumes a 
 set/provider/model from the project's history, and keeps everything changeable from inside the chat.
 
 - **Streaming** — assistant text is rendered as it arrives under an `❮ Answer · N chars`
-  label that counts the characters received so far, the thinking block that is streaming is
-  expanded (and collapses to a `💭 Thought · N chars` bar once the answer starts), so reasoning is
-  visible live but stays out of the way afterwards; a left click (or `/think`) opens it again. A tool
-  call is a collapsible block too: one chrome line (status icon · tool name · char count · hint)
-  followed by the full command, with the output revealed on expand (a left click or `/tool`); the
-  bar tracks the current set, context usage, tokens and cost.
-  `ROSSII_ACP_BLOCKS` picks the other behaviours (`open`, `done`, `closed` — see
-  [Thinking and tool blocks](#thinking-and-tool-blocks)).
+  label that counts the characters received so far. Thinking and tool calls fold into one-line
+  bars (`💭 Thought · N chars`, `✅ shell · 1.2k chars`) instead of expanding mid-turn, so a long
+  turn keeps the answer in view; a left click (or `/think` / `/tool`) opens a block, and the
+  command of a tool call sits under its bar. `ROSSII_ACP_BLOCKS` picks another behaviour —
+  `live`, `open`, `done` (see [Thinking and tool blocks](#thinking-and-tool-blocks)). The
+  status bar tracks the current set, context usage, tokens and cost.
 - **Its own screen** — the chat owns the alternate screen and scrolls the transcript itself
   (mouse wheel, PgUp/PgDn, Ctrl+Shift+F to search) while the composer stays pinned at the bottom.
   Streaming never yanks the view back. On exit the transcript is printed to the normal screen, so
@@ -147,18 +145,20 @@ a value can be a name or its number:
 
 | Value | While chunks arrive | Once the block is finished |
 |-------|---------------------|----------------------------|
-| `live` (`1`, default) | expanded | collapsed |
+| `live` (`1`) | expanded | collapsed |
 | `open` (`2`) | expanded | expanded |
 | `done` (`3`) | collapsed | expanded |
-| `closed` (`4`) | collapsed | collapsed |
+| `closed` (`4`, default) | collapsed | collapsed |
 
-`live` is what rossii always did: the reasoning/tool output is visible as it streams and folds
-into a one-line bar afterwards. A long turn with many tool calls pushes the transcript around less
-with `done` or `closed`.
+`closed` is the default: a turn shows the answers and the bars, not the reasoning and the tool
+output scrolling past, and the transcript stops being pushed around by a long turn. Open what you
+want to read — a click on the bar, `/think` and `/tool`. `live` is the behaviour rossii had before
+the setting existed (reasoning visible as it streams, folded afterwards), `open` keeps everything
+expanded, and `done` stays quiet during the turn and reveals each block once it stops.
 
 The mode only sets the *automatic* state — a click, `/think expand|collapse` and
 `/tool expand|collapse` still win, and the choice sticks for that block. An unusable value warns in
-the chat and keeps `live`.
+the chat and keeps `closed`.
 
 ### Slash commands
 
@@ -402,7 +402,7 @@ but the one that built them.
 | `ROSSII_ACP_IDLE_TIMEOUT_MS` | `300000` | cancel a turn when the agent sends nothing for this long (`0` disables) |
 | `ROSSII_ACP_PROMPT_TIMEOUT_MS` | `14400000` | absolute cap on a single turn (`0` disables) |
 | `ROSSII_ACP_STEER` | `1` | `0` disables steering: Enter during a turn adds nothing to it |
-| `ROSSII_ACP_BLOCKS` | `live` | when the thinking and tool blocks are open: `live` \| `open` \| `done` \| `closed` (or `1`–`4`) |
+| `ROSSII_ACP_BLOCKS` | `closed` | when the thinking and tool blocks are open: `live` (1) \| `open` (2) \| `done` (3) \| `closed` (4) |
 | `ROSSII_CHAT_MAIN_SCREEN` | unset | `1` renders the chat inline instead of on the alternate screen |
 | `ROSSII_NO_WORKTREE` | set by default | `1` skips worktree creation |
 | `ROSSII_FORCE_WORKTREE` | unset | `1` forces worktrees (overrides the above) |

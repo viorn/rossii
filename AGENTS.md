@@ -154,19 +154,22 @@ warns in the TUI and keeps the ACP default.
   `ROSSII_CHAT_MAIN_SCREEN=1` switches back to `TuiMainScreen` (inline; the terminal owns
   scrollback, so any repaint — spinner, streamed chunk — pulls the view to the bottom)
 - Collapsible blocks (`src/acp/block-mode.ts`, pure + unit-tested): `ROSSII_ACP_BLOCKS` decides the
-  **automatic** expanded state of the thought blocks and the tool-call blocks — `live` (default,
-  `1`) expanded while chunks arrive and collapsed on `setFinished()`, `open` (`2`) always expanded,
-  `done` (`3`) collapsed while streaming and expanded once finished, `closed` (`4`) always collapsed.
+  **automatic** expanded state of the thought blocks and the tool-call blocks — `live` (`1`)
+  expanded while chunks arrive and collapsed on `setFinished()`, `open` (`2`) always expanded,
+  `done` (`3`) collapsed while streaming and expanded once finished, `closed` (`4`, the **default**)
+  always collapsed. The default is the quiet transcript: only bars show, and the user opens what
+  they want to read; `ROSSII_ACP_BLOCKS=live` restores the pre-setting behaviour.
   `parseBlockMode` accepts the words (plus `expanded`/`finished`/`collapsed`) and the digits, and
   returns a warning for anything else (printed by `startChat` next to the watchdog warnings); the
   two predicates it exports — `startsExpanded` / `endsExpanded` — are the only place a mode turns
   into behaviour, and both blocks take it as a `mode` option. The mode is read once at startup
   (`ctx.blockMode`, `ctx.blockModeInvalid`), because switching it mid-conversation would leave two
   styles in one transcript. A manual toggle still outranks every mode.
-- Thinking blocks (`src/acp/thought.ts`, `ThoughtBlock`): the block that is streaming starts
-  **expanded** (reasoning is visible live, like before the collapsible bars) and collapses to
-  `💭 Thought · N chars` on `setFinished()`; a click or `/think` reopens it. A manual toggle
-  (`toggle()` / `setExpanded()`) outranks that auto-collapse. `/think [expand|collapse] [all]`
+- Thinking blocks (`src/acp/thought.ts`, `ThoughtBlock`): under the default `closed` mode the block
+  is a one-line `💭 Thought · N chars` bar from the first chunk, and the reasoning appears when the
+  user opens it; under `live` it starts **expanded** (reasoning visible live, like before the bars)
+  and collapses on `setFinished()`. A click or `/think` opens it either way, and a manual toggle
+  (`toggle()` / `setExpanded()`) outranks the automatic state. `/think [expand|collapse] [all]`
   reaches every block of the conversation (`parseThoughtCommand` is pure and unit-tested),
   `/think` alone toggles the most recent one. Clicking is only advertised when the renderer
   captures the mouse: `TuiMainScreen` does not, so the bar says `/think expand` there

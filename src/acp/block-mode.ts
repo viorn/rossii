@@ -8,12 +8,12 @@
  * every tool call pushes the rest of the transcript up while it runs.
  *
  * `ROSSII_ACP_BLOCKS` makes the rule a setting, with the same four states the
- * user sees:
+ * user sees (the default is the last one — the quiet transcript):
  *
- *  1. `live`   (default) — expanded while chunks arrive, collapses when done
- *  2. `open`             — always expanded, finished or not
- *  3. `done`             — collapsed while chunks arrive, expands when done
- *  4. `closed`           — always collapsed; only the bar is ever shown
+ *  1. `live`   — expanded while chunks arrive, collapses when done
+ *  2. `open`   — always expanded, finished or not
+ *  3. `done`   — collapsed while chunks arrive, expands when done
+ *  4. `closed` (default) — always collapsed; only the bar is ever shown
  *
  * The numbers are accepted as values too (`ROSSII_ACP_BLOCKS=2`), so the mode
  * can be picked by the list above rather than by remembering a word. A manual
@@ -25,8 +25,15 @@ export type BlockMode = "live" | "open" | "done" | "closed";
 
 export const BLOCK_MODE_ENV = "ROSSII_ACP_BLOCKS";
 
-/** The behaviour rossii shipped before the setting existed. */
-export const DEFAULT_BLOCK_MODE: BlockMode = "live";
+/**
+ * The default mode: everything stays a one-line bar unless the user opens it.
+ *
+ * The transcript is the reason to have a default at all — reasoning and tool
+ * output are long, and expanded-by-default pushed the answer out of the
+ * viewport on every burst. `ROSSII_ACP_BLOCKS=live` (or `1`) restores the
+ * expand-while-streaming behaviour rossii had before the setting.
+ */
+export const DEFAULT_BLOCK_MODE: BlockMode = "closed";
 
 /**
  * Accepted spellings. Words are matched case-insensitively; the digits are the

@@ -28,11 +28,11 @@ const ok = (name: string, fn: () => void) => checks.push([name, fn]);
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
-ok("unset means the pre-setting behaviour (`live`)", () => {
-  assert.equal(DEFAULT_BLOCK_MODE, "live");
-  assert.deepEqual(parseBlockMode(undefined), { mode: "live", invalid: null });
-  assert.deepEqual(parseBlockMode(""), { mode: "live", invalid: null });
-  assert.deepEqual(parseBlockMode("   "), { mode: "live", invalid: null });
+ok("unset means the quiet default (`closed`)", () => {
+  assert.equal(DEFAULT_BLOCK_MODE, "closed");
+  assert.deepEqual(parseBlockMode(undefined), { mode: "closed", invalid: null });
+  assert.deepEqual(parseBlockMode(""), { mode: "closed", invalid: null });
+  assert.deepEqual(parseBlockMode("   "), { mode: "closed", invalid: null });
 });
 
 // ─── Words ──────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ ok("a typo falls back to the default and warns", () => {
   assert.ok(invalid, "a warning is produced");
   assert.ok(invalid!.includes(BLOCK_MODE_ENV), "the warning names the setting");
   assert.ok(invalid!.includes("opne"), "the warning quotes the value");
-  assert.ok(invalid!.includes("live"), "the warning names the fallback");
+  assert.ok(invalid!.includes("closed"), "the warning names the fallback");
 });
 
 ok("an out-of-range number warns too", () => {

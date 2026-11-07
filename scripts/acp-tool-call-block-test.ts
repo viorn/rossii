@@ -29,9 +29,9 @@ type Check = [name: string, run: () => void];
 const checks: Check[] = [];
 const ok = (name: string, fn: () => void) => checks.push([name, fn]);
 
-/** A block with `chunk` already streamed into it. */
+/** A block with `chunk` already streamed into it (`live`: expanded by default). */
 const streaming = (chunk: string): ToolCallBlock => {
-  const block = new ToolCallBlock();
+  const block = new ToolCallBlock({ mode: "live" });
   block.setTitle("test_tool");
   block.setStatus("in_progress");
   block.appendContent(chunk);
@@ -164,9 +164,13 @@ const streamingIn = (mode: "live" | "open" | "done" | "closed"): ToolCallBlock =
   return block;
 };
 
-ok("defaults to the `live` mode when no mode is given", () => {
-  const block = streamingIn("live");
-  assert.equal(block.isExpanded, true);
+ok("defaults to the `closed` mode when no mode is given", () => {
+  const block = new ToolCallBlock();
+  block.setTitle("test_tool");
+  block.setStatus("in_progress");
+  block.appendContent("output");
+  assert.equal(block.isExpanded, false, "nothing is opened by itself");
+  assert.ok(!block.render(80).some((line) => line.includes("output")));
   block.setStatus("completed");
   block.setFinished();
   assert.equal(block.isExpanded, false);
@@ -301,7 +305,7 @@ ok("press and drag are left to the renderer", () => {
 
 ok("onToggle reports the new state", () => {
   const seen: boolean[] = [];
-  const block = new ToolCallBlock({ onToggle: (expanded) => seen.push(expanded) });
+  const block = new ToolCallBlock({ mode: "live", onToggle: (expanded) => seen.push(expanded) });
   block.setTitle("tool");
   block.toggle();
   block.toggle();
@@ -310,7 +314,7 @@ ok("onToggle reports the new state", () => {
 
 ok("setExpanded only notifies when the state changes", () => {
   const seen: boolean[] = [];
-  const block = new ToolCallBlock({ onToggle: (expanded) => seen.push(expanded) });
+  const block = new ToolCallBlock({ mode: "live", onToggle: (expanded) => seen.push(expanded) });
   block.setTitle("tool");
   block.setExpanded(false);
   block.setExpanded(false);

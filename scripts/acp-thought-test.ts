@@ -22,9 +22,9 @@ type Check = [name: string, run: () => void];
 const checks: Check[] = [];
 const ok = (name: string, fn: () => void) => checks.push([name, fn]);
 
-/** A block with `chunk` already streamed into it. */
+/** A block with `chunk` already streamed into it (`live`: expanded by default). */
 const streaming = (chunk: string): ThoughtBlock => {
-  const block = new ThoughtBlock();
+  const block = new ThoughtBlock({ mode: "live" });
   block.append(chunk);
   return block;
 };
@@ -110,11 +110,14 @@ ok("rounded K from 10000", () => {
 
 // ─── `ROSSII_ACP_BLOCKS` modes ──────────────────────────────────────────────
 
-ok("defaults to the `live` mode when no mode is given", () => {
-  assert.equal(new ThoughtBlock().isExpanded, true);
-  const block = streaming("reasoning");
+ok("defaults to the `closed` mode when no mode is given", () => {
+  const block = new ThoughtBlock();
+  assert.equal(block.isExpanded, false, "nothing is opened by itself");
+  block.append("reasoning");
+  assert.equal(block.isExpanded, false);
   block.setFinished();
   assert.equal(block.isExpanded, false);
+  assert.equal(new ThoughtBlock().render(80).length, 1, "only the bar is rendered");
 });
 
 ok("`open` mode stays expanded for good", () => {
@@ -250,7 +253,7 @@ ok("press and drag are left to the renderer", () => {
 
 ok("onToggle reports the new state", () => {
   const seen: boolean[] = [];
-  const block = new ThoughtBlock({ onToggle: (expanded) => seen.push(expanded) });
+  const block = new ThoughtBlock({ mode: "live", onToggle: (expanded) => seen.push(expanded) });
   block.toggle();
   block.toggle();
   assert.deepEqual(seen, [false, true]);
@@ -258,7 +261,7 @@ ok("onToggle reports the new state", () => {
 
 ok("setExpanded only notifies when the state changes", () => {
   const seen: boolean[] = [];
-  const block = new ThoughtBlock({ onToggle: (expanded) => seen.push(expanded) });
+  const block = new ThoughtBlock({ mode: "live", onToggle: (expanded) => seen.push(expanded) });
   block.setExpanded(false);
   block.setExpanded(false);
   assert.deepEqual(seen, [false]);

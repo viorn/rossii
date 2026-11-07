@@ -302,9 +302,9 @@ export interface ChatContext {
   altScreen: boolean;
   /**
    * `ROSSII_ACP_BLOCKS` mode (`./block-mode.ts`) for the thought and tool
-   * blocks created from now on: `live` (default) expands while streaming and
-   * collapses on finish, `open` never collapses, `done` expands only when the
-   * chunks stop, `closed` never expands. Changing it live would leave the
+   * blocks created from now on: `closed` (default) never expands, `live`
+   * expands while streaming and collapses on finish, `open` never collapses,
+   * `done` expands only when the chunks stop. Changing it live would leave the
    * conversation in two styles, so it is read once at startup.
    */
   blockMode: BlockMode;
