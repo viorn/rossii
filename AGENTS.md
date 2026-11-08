@@ -171,6 +171,11 @@ warns in the TUI and keeps the ACP default.
   `user_message_chunk` replay path in `chat-stream.ts` — but NOT for a steer (`steerChunkId`), which
   belongs to the turn it was sent into. It is a `Component`, not a `Text`, because only
   `render(width)` knows the transcript width (alternate screen vs inline, terminal resize).
+  A session switch (`/session`) or a new session wipes the transcript entirely
+  (`resetTranscript` in `chat-stream.ts`: children, block lists, streaming buffers, steer
+  residue and `turnsStarted`), so a conversation never inherits the previous session's state
+  and the first exchange of any session goes without a separator; a fork keeps the on-screen
+  transcript, because the fork's stored history is a copy of exactly what is displayed.
 - Collapsible blocks (`src/acp/block-mode.ts`, pure + unit-tested): `ROSSII_ACP_BLOCKS` decides the
   **automatic** expanded state of the thought blocks and the tool-call blocks — `live` (`1`)
   expanded while chunks arrive and collapsed on `setFinished()`, `open` (`2`) always expanded,

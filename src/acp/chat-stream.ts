@@ -2,9 +2,9 @@
  * chat-stream.ts — streaming state and session update rendering.
  *
  * Functions: closeThought, closeToolBlocks, closeUser, closeMessage,
- * flushStream, flushThought, markSteerQueued, takeSteer, dropSteer,
- * handleSessionUpdate, renderHeader, renderStatus, toggleAllThoughts,
- * toggleAllTools.
+ * resetTranscript, flushStream, flushThought, markSteerQueued, takeSteer,
+ * dropSteer, handleSessionUpdate, renderHeader, renderStatus,
+ * toggleAllThoughts, toggleAllTools.
  */
 
 import pc from "picocolors";
@@ -75,6 +75,40 @@ export function closeMessage(ctx: ChatContext): void {
   ctx.answerChars = 0;
   ctx.pendingAnswer = "";
   ctx.currentMessageId = null;
+}
+
+/**
+ * Wipe the transcript and every per-conversation streaming ref — a session
+ * switch or a new session must not inherit the previous conversation's blocks,
+ * buffers or turn counter (otherwise the first exchange of the new session
+ * would open with a turn separator meant for the old one).
+ *
+ * The header and status lines live outside the transcript container, so they
+ * survive the clear; `renderHeader`/`renderStatus` refresh their text anyway.
+ */
+export function resetTranscript(ctx: ChatContext): void {
+  // Null the streaming refs first: `closeThought`/`closeMessage` act on them,
+  // and a discarded block must not be pushed into the (cleared) block lists.
+  ctx.currentThought = null;
+  ctx.currentMd = null;
+  ctx.streamBuffer = "";
+  ctx.answerLabelLine = null;
+  ctx.answerChars = 0;
+  ctx.pendingAnswer = "";
+  ctx.currentMessageId = null;
+  ctx.userLine = null;
+  ctx.userBuffer = "";
+  ctx.userMessageId = null;
+  ctx.thoughtBlocks = [];
+  ctx.toolCallBlocks.clear();
+  ctx.turnsStarted = 0;
+  // Steers belong to a turn of the previous conversation; a switch refuses
+  // while a turn runs, so nothing live is here — drop the residue.
+  ctx.steerEntries.splice(0);
+  ctx.steerAckIds.clear();
+  ctx.pendingPrompt = null;
+  ctx.transcript.clear();
+  ctx.tui.requestRender();
 }
 
 // ─── Throttle ────────────────────────────────────────────────────────────────

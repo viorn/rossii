@@ -138,6 +138,8 @@ set/provider/model from the project's history, and keeps everything changeable f
 - **Turns** — a new question opens with a dim dashed rule, so a long session reads as separate
   exchanges instead of one wall of text; the first exchange of a session goes without it, and a
   replayed history (`session/load`) gets the same rules as the live conversation did.
+  Switching sessions (`/session`) or starting a new one clears the screen — the previous
+  conversation is not carried over (a fork keeps it, since the copy starts as that conversation).
 - **Its own screen** — the chat owns the alternate screen and scrolls the transcript itself
   (mouse wheel, PgUp/PgDn, Ctrl+Shift+F to search) while the composer stays pinned at the bottom.
   Streaming never yanks the view back. On exit the transcript is printed to the normal screen, so

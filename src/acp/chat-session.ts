@@ -21,7 +21,7 @@ import {
   noteExtensionWarning,
   persistSelection,
 } from "./chat-extensions";
-import { closeThought, closeMessage, closeUser, closeToolBlocks, renderHeader, renderStatus } from "./chat-stream";
+import { closeThought, closeMessage, closeUser, resetTranscript, renderHeader, renderStatus } from "./chat-stream";
 import type { ChatContext } from "./chat-context";
 import type { AcpChatOptions } from "./chat-context";
 import type { SessionSet } from "../rossii-config";
@@ -244,15 +244,10 @@ export async function changeSession(ctx: ChatContext, sessionNameOrId: string): 
     const loaded = await ctx.client.loadSession({ cwd: ctx.cwd, sessionId: target.id, mcpServers: [] });
     ctx.sessionId = target.id;
     ctx.sessionTitle = target.name;
-    // The replay may end on a thought or an assistant chunk; close those
-    // blocks, or the last one stays "Thinking…" and never joins
-    // `thoughtBlocks` (only the mouse could toggle it then). Replayed tool
-    // calls are closed the same way — a resumed conversation must not show
-    // them as still running.
-    closeUser(ctx);
-    closeMessage(ctx);
-    closeThought(ctx);
-    closeToolBlocks(ctx);
+    // The previous conversation leaves the screen entirely: its blocks,
+    // buffers and turn counter belong to the old session, and the first
+    // exchange of the new one must not inherit a separator counter from it.
+    resetTranscript(ctx);
     if (loaded?.configOptions) ctx.newSessionConfigOptions = loaded.configOptions;
     ctx.transcript.addChild(new Text(pc.dim(`─── Switched to session: ${target.name} (${target.id}) ───`), 1, 0));
     // The wizard's provider/model pair survives the switch: applying it also
@@ -300,6 +295,9 @@ export async function newSession(ctx: ChatContext): Promise<void> {
     ctx.sessionId = response.sessionId;
     ctx.newSessionConfigOptions = response.configOptions;
     ctx.sessionTitle = "New Chat";
+    // A fresh session starts with an empty screen (and a zeroed turn counter,
+    // so the first exchange goes without a separator).
+    resetTranscript(ctx);
     ctx.transcript.addChild(new Text(pc.dim(`─── New session started: ${ctx.sessionId} ───`), 1, 0));
     await applySessionConfig(ctx.client, ctx.sessionId, { provider: ctx.currentProvider, model: ctx.currentModel }, {});
     await applySystemPrompt(ctx, ctx.sessionId, ctx.currentSet?.systemPrompt ?? "");
