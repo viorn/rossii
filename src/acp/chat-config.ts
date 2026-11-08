@@ -13,7 +13,7 @@ import { listSessionSets, DEFAULT_PROFILE_SENTINEL } from "../rossii-config";
 import { readProjectMeta } from "../project";
 import { getAllSessions } from "../sessions";
 import { isInsideGitRepo, getProjectSessionDirs } from "../worktree";
-import { applySessionConfig } from "./session-config";
+import { applySessionConfig, optionValue } from "./session-config";
 import { changeSet, changeSession, newSession, forkCurrentSession, renameCurrentSession, promptRename } from "./chat-session";
 import { toggleAllThoughts, toggleAllTools, renderHeader, renderStatus } from "./chat-stream";
 import { persistSelection } from "./chat-extensions";
@@ -120,18 +120,77 @@ export async function changeProvider(ctx: ChatContext, newProvider: string): Pro
   ctx.tui.requestRender();
 }
 
-// ─── Config menu ─────────────────────────────────────────────────────────────
+// ─── Thinking effort ─────────────────────────────────────────────────────────
 
+/**
+ * Change `thinking_effort` — how hard the model reasons (goose's fourth
+ * `configOptions` entry, `select` with 5 values on goose 1.57). Unlike the
+ * provider/model pair it is not part of the wizard or the project meta: goose
+ * persists it into `sessions.db` itself, so the value travels with the
+ * session and rossii only offers a switch here.
+ */
+export async function changeThinkingEffort(ctx: ChatContext, newEffort: string): Promise<void> {
+  if (!ctx.sessionId) return;
+  const current = optionValue(ctx.newSessionConfigOptions, "thinking_effort") ?? null;
+  const outcome = await applySessionConfig(
+    ctx.client,
+    ctx.sessionId,
+    { provider: ctx.currentProvider, model: ctx.currentModel, thinkingEffort: newEffort },
+    { provider: ctx.currentProvider, model: ctx.currentModel, thinkingEffort: current },
+  );
+  if (outcome.configOptions) ctx.newSessionConfigOptions = outcome.configOptions;
+  if (outcome.warning) {
+    ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${outcome.warning}`), 1, 0));
+  } else {
+    ctx.transcript.addChild(new Text(
+      pc.dim(`⚙ Thinking effort changed to ${outcome.thinkingEffort ?? newEffort}`),
+      1, 0,
+    ));
+  }
+  ctx.tui.requestRender();
+}
+
+/** The `thinking_effort` select from goose's `configOptions` — absent when the
+ *  agent is older than the option or the provider has nothing to choose. */
+function effortOption(ctx: ChatContext) {
+  return ctx.newSessionConfigOptions?.find((o) => o.id === "thinking_effort");
+}
+
+export function showEffortMenu(ctx: ChatContext): void {
+  const option = effortOption(ctx);
+  const items: Array<{ value: string; label: string; description?: string }> = (option?.options ?? [])
+    .map((o) => ({
+      value: o.value,
+      label: o.name ?? o.value,
+      ...(o.value === option?.currentValue ? { description: "current" } : {}),
+    }));
+  if (items.length === 0) {
+    ctx.transcript.addChild(new Text(
+      pc.yellow("⚠ goose did not report a thinking_effort option for this session — it is not offered here."),
+      1, 0,
+    ));
+    ctx.tui.requestRender();
+    return;
+  }
+  items.push({ value: "cancel", label: "Cancel" });
+  showMenu(ctx, "Select Thinking Effort", items, (value) => {
+    if (value !== "cancel") void changeThinkingEffort(ctx, value);
+  });
+}
+
+// ─── Config menu ─────────────────────────────────────────────────────────────
 export function showConfigMenu(ctx: ChatContext): void {
   showMenu(ctx, "Configuration", [
     { value: "provider", label: "Change Provider" },
     { value: "model", label: "Change Model" },
+    { value: "effort", label: "Change Thinking Effort" },
     { value: "set", label: "Change Set" },
     { value: "session", label: "Change Session" },
   ], (value) => {
     switch (value) {
       case "provider": showProviderMenu(ctx); break;
       case "model": showModelMenu(ctx); break;
+      case "effort": showEffortMenu(ctx); break;
       case "set": showSetMenu(ctx); break;
       case "session": showSessionMenu(ctx); break;
     }
@@ -435,6 +494,14 @@ export async function handleCommand(ctx: ChatContext, text: string): Promise<voi
         await changeProvider(ctx, args.join(" "));
       } else {
         showProviderMenu(ctx);
+      }
+      return;
+    case "effort":
+    case "thinking":
+      if (args.length > 0) {
+        await changeThinkingEffort(ctx, args.join(" "));
+      } else {
+        showEffortMenu(ctx);
       }
       return;
     case "set":

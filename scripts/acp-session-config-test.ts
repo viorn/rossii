@@ -84,6 +84,43 @@ const checks: Check[] = [
     assert.deepEqual(planSessionConfig({ provider: null, model: null }, {}), []);
   }],
 
+  ["thinking_effort is applied when it changed, skipped when it did not", () => {
+    assert.deepEqual(
+      planSessionConfig(
+        { thinkingEffort: "high" },
+        { thinkingEffort: "low" },
+      ),
+      [{ configId: "thinking_effort", value: "high" }],
+    );
+    assert.deepEqual(
+      planSessionConfig({ thinkingEffort: "high" }, { thinkingEffort: "high" }),
+      [],
+    );
+    // A provider switch does not touch the effort — goose keeps it across the
+    // switch, so no redundant request is sent.
+    assert.deepEqual(
+      planSessionConfig(
+        { provider: "new", thinkingEffort: "same" },
+        { provider: "old", thinkingEffort: "same" },
+      ),
+      [{ configId: "provider", value: "new" }],
+    );
+  }],
+
+  ["the effort travels last, after the pair it shares the request with", () => {
+    assert.deepEqual(
+      planSessionConfig(
+        { provider: "new", model: "m", thinkingEffort: "high" },
+        { provider: "old", model: "m", thinkingEffort: "low" },
+      ),
+      [
+        { configId: "provider", value: "new" },
+        { configId: "model", value: "m" },
+        { configId: "thinking_effort", value: "high" },
+      ],
+    );
+  }],
+
   ["optionValue reads the current value out of configOptions", () => {
     const options = [
       { id: "provider", currentValue: "custom_kodik" },

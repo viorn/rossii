@@ -132,8 +132,7 @@ warns in the TUI and keeps the ACP default.
 - Implementation: `src/acp/` — `client.ts` (transport), `custom.ts` (goose custom
   requests, methods `_goose/unstable/...`), `extensions.ts` (spec → ACP `mcpServers`,
   pure and unit-tested), `session-meta.ts` (`session/new` `_meta`, pure and unit-tested),
-  `session-config.ts` (provider/model via `session/set_config_option`, pure planning +
-  non-throwing apply, unit-tested), `steer.ts` (steering a running turn: meta parsing and
+  `session-config.ts` (provider/model/thinking_effort via `session/set_config_option`, pure planning +  non-throwing apply, unit-tested), `steer.ts` (steering a running turn: meta parsing and
   the Enter decision, pure and unit-tested), `slash-commands.ts` (which `/…` is the chat's
   and which is goose's, plus the command list goose announces, pure and unit-tested),
   `command-complete.ts` (the composer's `/…` completion menu: the chat's commands plus
@@ -300,8 +299,9 @@ warns in the TUI and keeps the ACP default.
   prefix-then-substring, case-insensitive, names only: `/model ` (with a space) closes the
   menu. Nothing is gated by it — it is a shortcut for typing, not a filter
 - **Live configuration** — no restart: slash commands typed into the composer
-  (`/config`, `/provider`, `/model`, `/set`, `/session`, `/rename`, `/fork`, `/think`, `/tool`) plus `SelectList`
+  (`/config`, `/provider`, `/model`, `/set`, `/session`, `/rename`, `/fork`, `/think`, `/tool`, `/effort`) plus `SelectList`
   overlays. `showMenu()` refuses to stack a menu on a permission prompt or another menu:
+  - provider/model → `session/set_config_option`; the response's `configOptions` are kept, and
   - provider/model → `session/set_config_option`; the response's `configOptions` are kept, and
     `session/load`'s are read too (`LoadSessionResponse` used to be discarded, which is why the
     model menu claimed "No model list available" on every resume). The `session/update` →

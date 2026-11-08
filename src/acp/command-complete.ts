@@ -38,10 +38,10 @@ import { normalizeCommandName, type GooseCommand } from "./slash-commands";
  * once, under its canonical name.
  */
 export const CHAT_COMMANDS: readonly AutocompleteItem[] = [
-  { value: "config", label: "config", description: "Change provider, model, set or session" },
+  { value: "config", label: "config", description: "Change provider, model, effort, set or session" },
   { value: "model", label: "model", description: "Switch the model (`fetch` asks the provider's API)" },
   { value: "provider", label: "provider", description: "Switch the provider" },
-  { value: "set", label: "set", description: "Switch the set (system prompt + extensions)" },
+  { value: "effort", label: "effort", description: "Thinking effort (how hard the model reasons)" },  { value: "set", label: "set", description: "Switch the set (system prompt + extensions)" },
   { value: "session", label: "session", description: "Switch session, or `new` / `rename` / `fork`" },
   { value: "rename", label: "rename", description: "Rename the current session" },
   { value: "fork", label: "fork", description: "Copy the session and continue in the copy" },

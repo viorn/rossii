@@ -31,11 +31,12 @@ import type {
 export interface SessionConfig {
   provider?: string | null;
   model?: string | null;
+  /** `thinking_effort` — how hard the model reasons; one of goose's `configOptions`. */
+  thinkingEffort?: string | null;
 }
 
 export interface SessionConfigStep {
-  configId: "provider" | "model";
-  value: string;
+  configId: "provider" | "model" | "thinking_effort";  value: string;
 }
 
 /**
@@ -58,6 +59,11 @@ export function planSessionConfig(
   if (desired.model && (providerChanged || desired.model !== current.model)) {
     steps.push({ configId: "model", value: desired.model });
   }
+  // The effort is independent of the provider switch (goose keeps it), so it
+  // is applied last and only when it actually changed.
+  if (desired.thinkingEffort != null && desired.thinkingEffort !== current.thinkingEffort) {
+    steps.push({ configId: "thinking_effort", value: desired.thinkingEffort });
+  }
   return steps;
 }
 
@@ -73,7 +79,8 @@ export interface SessionConfigOutcome {
   /** Effective pair as reported by the agent (falls back to what was requested). */
   provider?: string | null;
   model?: string | null;
-  /** Requests actually sent, in order. */
+  /** Effective `thinking_effort` as reported by the agent (falls back to the request). */
+  thinkingEffort?: string | null;  /** Requests actually sent, in order. */
   applied: SessionConfigStep[];
   /**
    * The refreshed `configOptions` the agent reported last. Carries the model
@@ -100,7 +107,7 @@ export async function applySessionConfig(
   const steps = planSessionConfig(desired, current);
   let provider = current.provider ?? null;
   let model = current.model ?? null;
-  /** Refreshed options from the agent's last successful response. */
+  let thinkingEffort = current.thinkingEffort ?? null;  /** Refreshed options from the agent's last successful response. */
   let configOptions: SessionConfigOption[] | undefined;
 
   for (const step of steps) {
@@ -120,7 +127,8 @@ export async function applySessionConfig(
       // so a silent mismatch stays visible in the final check below.
       const reported = optionValue(response?.configOptions, step.configId);
       if (step.configId === "provider") provider = reported ?? step.value;
-      else model = reported ?? step.value;
+      else if (step.configId === "model") model = reported ?? step.value;
+      else thinkingEffort = reported ?? step.value;
       if (response?.configOptions) configOptions = response.configOptions;
     } catch (error) {
       const detail = String((error as Error)?.message ?? error);
@@ -128,6 +136,7 @@ export async function applySessionConfig(
       return {
         provider,
         model,
+        thinkingEffort,
         ...(configOptions ? { configOptions } : {}),
         applied: steps.slice(0, steps.indexOf(step)),
         warning:
@@ -148,9 +157,13 @@ export async function applySessionConfig(
   if (desired.model && model && desired.model !== model) {
     mismatches.push(`model is ${model}`);
   }
+  if (desired.thinkingEffort != null && thinkingEffort && desired.thinkingEffort !== thinkingEffort) {
+    mismatches.push(`thinking_effort is ${thinkingEffort}`);
+  }
   return {
     provider,
     model,
+    thinkingEffort,
     ...(configOptions ? { configOptions } : {}),
     applied: steps,
     ...(mismatches.length > 0

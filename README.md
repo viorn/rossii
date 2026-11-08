@@ -198,6 +198,7 @@ The menu is a shortcut for typing, not a filter: type the commands out in full a
 | `/config` | Menu: provider, model, set, session |
 | `/provider [name]` | Switch provider (applied to the running session) |
 | `/model [name\|fetch]` | Switch model, or fetch the provider's model list from its API |
+| `/effort [level]` | Thinking effort (`thinking_effort`): how hard the model reasons |
 | `/set [name\|default\|none]` | Switch the session set — system prompt **and** extensions, live |
 | `/session` | Switch session, start a new one, rename, fork |
 | `/session rename <title>` · `/rename [title]` | Rename (bare command asks in the composer) |
