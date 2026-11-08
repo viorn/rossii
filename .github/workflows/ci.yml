@@ -34,9 +34,11 @@ jobs:
           bun src/index.ts --version
           bun src/index.ts --help > /dev/null
           set +e
-          bun src/index.ts doctor | tee /tmp/rossii-doctor.txt
+          # Redirect rather than pipe: in `... | tee` the status is tee's, not
+          # rossii's, and doctor is expected to exit 1 without goose.
+          bun src/index.ts doctor > /tmp/rossii-doctor.txt 2>&1
           status=$?
           set -e
-          # CI has no goose; doctor must say so instead of throwing.
+          cat /tmp/rossii-doctor.txt
           test "$status" -eq 1
           grep -q "not found on PATH" /tmp/rossii-doctor.txt
