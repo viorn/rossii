@@ -40,6 +40,7 @@ import { readRossiiConfig } from "./rossii-config";
 import { getConfigProviders, getDiscoveredCustomProviders, loadConfigEnvVars } from "./config";
 import { detectOllama } from "./models";
 import { runDoctor } from "./doctor";
+import { runUpdate } from "./update";
 
 import {
   LEGACY_CHAT_ALIASES, resolveChatMode,
@@ -56,6 +57,7 @@ rossii ${pkg.version} — an ACP terminal UI for Goose
 Usage:
   rossii [flags]        open the wizard (chat mode by default)
   rossii doctor         print a diagnostic report
+  rossii update         install the latest release (--check, --pre, --version)
   rossii --version      print the version
   rossii --help         print this help
 
@@ -102,6 +104,9 @@ async function main() {
   }
   if (command === "doctor") {
     process.exit(runDoctor());
+  }
+  if (command === "update") {
+    process.exit(await runUpdate(rawArgs.slice(1)));
   }
 
   console.clear();

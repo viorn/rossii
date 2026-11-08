@@ -101,6 +101,20 @@ bun install
 bun start
 ```
 
+### Обновление
+
+```bash
+rossii update            # поставить последний стабильный релиз
+rossii update --check    # только проверить, есть ли новее
+rossii update --pre      # последний опубликованный релиз, включая prerelease
+rossii update --version v3.5.2 --dir /usr/local/bin
+```
+
+Скачивает нужный asset `rossii-<version>-linux-x86_64`, проверяет SHA-256 (дайджест
+asset'а, а если его нет — опубликованный `.sha256`) и атомарно заменяет текущий
+бинарник. При запуске из исходников ставит в `~/.local/bin/rossii`. Поддерживаются
+`ROSSII_REPO`, `ROSSII_INSTALL_DIR` и `GITHUB_TOKEN`; остальное — в `--help`.
+
 ---
 
 ## Чат

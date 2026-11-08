@@ -33,6 +33,7 @@ jobs:
         run: |
           bun src/index.ts --version
           bun src/index.ts --help > /dev/null
+          bun src/index.ts update --help > /dev/null
           set +e
           # Redirect rather than pipe: in `... | tee` the status is tee's, not
           # rossii's, and doctor is expected to exit 1 without goose.

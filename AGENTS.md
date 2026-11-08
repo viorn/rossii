@@ -48,7 +48,11 @@ renderer resolution, the step loop), `src/wizard-steps.ts` holds steps 1–5 plu
 mode and renders the summary, `src/wizard-sessions.ts` holds the session-deletion
 dialog and the set create/manage wizards, and `src/doctor.ts` is `rossii doctor`
 (the diagnostics command: goose/acp, config and DB paths, providers, sets, session
-counts, worktree state, resolved `ROSSII_*` settings and the warnings the chat would print).
+counts, worktree state, resolved `ROSSII_*` settings and the warnings the chat would print),
+and `src/update.ts` is `rossii update` (release lookup via the GitHub API, SHA-256 check
+against the asset digest or `.sha256`, atomic rename over the running binary; its pure
+helpers — version comparison, asset naming, checksum parsing, target selection — are
+unit-tested in `scripts/update-test.ts`).
 
 If no project meta exists yet, first option is selected (None → first provider → first model).
 
@@ -412,15 +416,16 @@ warns in the TUI and keeps the ACP default.
 - Sessions listing/deletion uses `bun:sqlite` (`src/sessions.ts`): no external `sqlite3`
   binary, the reader opens the DB read-only, and `usage_ledger` is skipped when an older
   goose did not create it. Diagnostics live in `rossii doctor` (`src/doctor.ts`);
-  `rossii --version` / `--help` are handled before the TUI starts
+  `rossii --version` / `--help` and `rossii update` are handled before the TUI starts
 - Verification scripts: `bun run test` (unit tests for `extensions.ts`, `session-meta.ts`,
   `session-config.ts`, `steer.ts`, `slash-commands.ts`, `command-complete.ts`,
   `model-options.ts`, the overlay components, the tool-call block + its
   `tool-call-content.ts` wire mapping, the streaming renderer (`scripts/acp-stream-test.ts`),
   the db-backed session listing, and
   `scripts/worktree-test.ts` (real git in a temp repo: create/resume, dirty refusal,
-  merged vs unmerged branch, path with spaces, no nested worktree) — no
-  goose needed), `bun scripts/acp-probe.ts`
+  merged vs unmerged branch, path with spaces, no nested worktree) and
+  `scripts/update-test.ts` (version comparison, asset naming, checksum parsing,
+  install-target selection) — no goose needed), `bun scripts/acp-probe.ts`
   (raw protocol), `bun scripts/acp-steer-probe.ts` (steering against a live agent: run id, ack,
   pickup, `ids match: YES`; it parses the meta with `src/acp/steer.ts`, so the shipped code is what
   gets proven) and `bun scripts/acp-client-smoke.ts` (`src/acp/client.ts` without the TUI; checks the

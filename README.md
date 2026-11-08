@@ -104,6 +104,21 @@ bun install
 bun start
 ```
 
+### Updating
+
+```bash
+rossii update            # install the latest stable release
+rossii update --check    # only report what is available
+rossii update --pre      # take the newest published release, prereleases included
+rossii update --version v3.5.2 --dir /usr/local/bin
+```
+
+It downloads the matching `rossii-<version>-linux-x86_64` asset, verifies its SHA-256
+(the asset digest, falling back to the published `.sha256`), and replaces the running
+binary atomically. Run from source, it installs to `~/.local/bin/rossii` instead.
+`ROSSII_REPO`, `ROSSII_INSTALL_DIR` and `GITHUB_TOKEN` are honoured; `--help` lists
+the rest.
+
 ---
 
 ## The chat
