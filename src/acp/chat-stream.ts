@@ -21,6 +21,22 @@ import { answerLabel, formatCost, markdownTheme } from "./chat-context";
 import type { ChatContext } from "./chat-context";
 import type { SessionNotification } from "./types";
 
+// ─── Empty answers ───────────────────────────────────────────────────────────
+
+/**
+ * Whitespace and zero-width characters that carry no answer.
+ *
+ * goose ends many turns with a whitespace chunk (`"\n\n"`), and every tool
+ * call closes the answer that preceded it — creating a block for those chunks
+ * left `❮ Answer · 0 chars` bars in the transcript.
+ */
+const INVISIBLE_TEXT = /[\s\u200b\u200c\u200d\u2060\ufeff]/g;
+
+/** Does this chunk contain anything a reader would see? */
+export function hasVisibleAnswerText(text: string): boolean {
+  return text.replace(INVISIBLE_TEXT, "").length > 0;
+}
+
 // ─── Close helpers ───────────────────────────────────────────────────────────
 
 /** Close the current thought block so the next burst renders separately. */
@@ -57,6 +73,7 @@ export function closeMessage(ctx: ChatContext): void {
   }
   ctx.answerLabelLine = null;
   ctx.answerChars = 0;
+  ctx.pendingAnswer = "";
   ctx.currentMessageId = null;
 }
 
@@ -186,7 +203,20 @@ export function handleSessionUpdate(ctx: ChatContext, notification: SessionNotif
         const messageId = typeof update.messageId === "string" ? update.messageId : null;
         if (messageId && messageId !== ctx.currentMessageId) closeMessage(ctx);
         if (messageId) ctx.currentMessageId = messageId;
+
+        let text = String(update.content.text ?? "");
         if (!ctx.currentMd) {
+          // Nothing visible yet (a "\n\n" separator chunk): buffer it without
+          // creating a block. A message that never produces visible text —
+          // typical between tool calls — stays out of the transcript entirely.
+          if (!hasVisibleAnswerText(text)) {
+            ctx.pendingAnswer += text;
+            break;
+          }
+          if (ctx.pendingAnswer) {
+            text = ctx.pendingAnswer + text;
+            ctx.pendingAnswer = "";
+          }
           // The label rides above the markdown in the same container, so the
           // streaming block reports its size live (`❮ Answer · N chars`),
           // exactly like the thought bar.
@@ -198,10 +228,10 @@ export function handleSessionUpdate(ctx: ChatContext, notification: SessionNotif
           ctx.transcript.addChild(container);
           ctx.answerChars = 0;
         }
-        ctx.streamBuffer += update.content.text;
+        ctx.streamBuffer += text;
         // Counted per chunk (`[...s].length` per update): recounting the whole
         // buffer on every chunk would make a long answer quadratic.
-        ctx.answerChars += [...update.content.text].length;
+        ctx.answerChars += [...text].length;
         ctx.answerLabelLine?.setText(answerLabel(ctx.answerChars));
         flushStream(ctx);
       }

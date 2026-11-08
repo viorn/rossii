@@ -116,8 +116,10 @@ set/provider/model from the project's history, and keeps everything changeable f
   bars (`💭 Thought · N chars`, `✅ shell · 1.2k chars`) instead of expanding mid-turn, so a long
   turn keeps the answer in view; a left click (or `/think` / `/tool`) opens a block, and the
   command of a tool call sits under its bar. `ROSSII_ACP_BLOCKS` picks another behaviour —
-  `live`, `open`, `done` (see [Thinking and tool blocks](#thinking-and-tool-blocks)). The
-  status bar tracks the current set, context usage, tokens and cost.
+  `live`, `open`, `done` (see [Thinking and tool blocks](#thinking-and-tool-blocks)). A
+  whitespace-only chunk (goose sends a bare `\n\n` between a tool call and the next text) never
+  opens an answer, so no empty `❮ Answer · 0 chars` bars appear. The status bar tracks the current
+  set, context usage, tokens and cost.
 - **Turns** — a new question opens with a dim dashed rule, so a long session reads as separate
   exchanges instead of one wall of text; the first exchange of a session goes without it, and a
   replayed history (`session/load`) gets the same rules as the live conversation did.
@@ -352,11 +354,32 @@ ROSSII_ACP_MODE=classic rossii n   # hand the terminal to the classic `goose ses
 
 New sessions can run in a dedicated worktree at `<repo>/.worktree/<name>` on a matching branch:
 
-- resume detects the existing worktree and continues there;
-- deleting a session removes the worktree and the branch;
+- resume detects the existing worktree and continues there, even when rossii is started from
+  inside `<repo>/.worktree/<name>` (the main repo root is resolved, no nested worktrees);
+- deleting a session removes the worktree; the branch is deleted only when all of its commits are
+  already in the main checkout, so an unmerged branch is kept and named in the output;
+- a worktree with uncommitted changes is never deleted silently: the delete dialog asks, and
+  "keep" leaves both the session and its worktree untouched;
 - stale registrations are pruned automatically;
 - disabled outside a git repo, enabled per run with `w`/`wa`/`ws`/`wn`, or permanently with
   `{ "default_mode": "worktree" }` in `~/.config/rossii/config.json`.
+
+---
+
+## Diagnostics
+
+```bash
+rossii --version      # rossii version
+rossii --help         # flags, quick modes and environment variables
+rossii doctor         # why is it not working?
+```
+
+`doctor` prints one report: the resolved runtime, the installed goose and whether it supports
+`acp`, the config and sessions-DB paths, enabled providers, session sets, session counts by type,
+the worktree state (including worktrees with uncommitted changes), every `ROSSII_*` value in
+effect, and the warnings the chat would print — an invalid `ROSSII_ACP_BLOCKS`, a bad timeout or
+a legacy `CGOOSE_*` setting shows up here instead of failing silently. The sessions DB is opened
+read-only with Bun's built-in SQLite; no `sqlite3` binary is required.
 
 ---
 
@@ -367,7 +390,8 @@ New sessions can run in a dedicated worktree at `<repo>/.worktree/<name>` on a m
 - The `_goose/unstable/*` requests rossii uses (system prompt, extension add/remove/list, rename)
   degrade into chat warnings on builds that lack them, so an older Goose still works with the
   features it has.
-- **Bun** ≥ 1.x to run from source or build the binary.
+- **Bun** ≥ 1.x to run from source or build the binary. No `sqlite3` CLI is needed — sessions are
+  read with Bun's built-in SQLite.
 - Linux; macOS may work; Windows is unsupported.
 
 The **release binary** is a Bun standalone executable: x86_64, linked against the system glibc,
@@ -461,7 +485,8 @@ rossii (Bun + pi-tui) ── stdio JSON-RPC 2.0 ──> goose acp
 
 ```bash
 bun run check     # tsc
-bun run test      # unit tests: extensions, session meta/config, steering, slash commands + their completion, sessions db, client, overlays
+bun run test      # unit tests (extensions, session meta/config, steering, slash commands,
+                  # sessions db, client, overlays) + real-git worktree integration tests
 bun run acp:probe # raw ACP session against a real goose
 bun run acp:smoke # AcpClient without the TUI
 ```

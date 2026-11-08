@@ -3,11 +3,18 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["node"],
+    "types": [
+      "node",
+      "bun"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*", "scripts/**/*"]
+  "include": [
+    "src/**/*",
+    "scripts/**/*"
+  ]
 }

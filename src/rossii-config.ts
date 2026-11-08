@@ -38,6 +38,11 @@ const ROSSII_CONFIG_DIR = resolveConfigDir();
 const ROSSII_CONFIG_PATH = join(ROSSII_CONFIG_DIR, "config.json");
 const ROSSII_SETS_DIR = join(ROSSII_CONFIG_DIR, "sets");
 
+/** Resolved config locations — `rossii doctor` prints these. */
+export function getRossiiPaths(): { configDir: string; configPath: string; setsDir: string } {
+  return { configDir: ROSSII_CONFIG_DIR, configPath: ROSSII_CONFIG_PATH, setsDir: ROSSII_SETS_DIR };
+}
+
 /** Supported file extensions for session set files (ordered by preference) */
 const SET_EXTENSIONS = [".yaml", ".yml", ".json"] as const;
 

@@ -13,7 +13,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "check": "tsc -p tsconfig.json",
-    "test": "bun scripts/acp-extensions-test.ts && bun scripts/acp-session-meta-test.ts && bun scripts/acp-session-config-test.ts && bun scripts/acp-steer-test.ts && bun scripts/acp-slash-commands-test.ts && bun scripts/acp-command-complete-test.ts && bun scripts/acp-model-options-test.ts && bun scripts/sessions-list-test.ts && bun scripts/acp-client-offline-test.ts && bun scripts/acp-overlay-test.ts && bun scripts/acp-block-mode-test.ts && bun scripts/acp-thought-test.ts && bun scripts/acp-tool-call-block-test.ts && bun scripts/acp-turn-separator-test.ts",
+    "test": "bun scripts/acp-extensions-test.ts && bun scripts/acp-session-meta-test.ts && bun scripts/acp-session-config-test.ts && bun scripts/acp-steer-test.ts && bun scripts/acp-slash-commands-test.ts && bun scripts/acp-command-complete-test.ts && bun scripts/acp-model-options-test.ts && bun scripts/sessions-list-test.ts && bun scripts/acp-client-offline-test.ts && bun scripts/acp-overlay-test.ts && bun scripts/acp-block-mode-test.ts && bun scripts/acp-thought-test.ts && bun scripts/acp-tool-call-block-test.ts && bun scripts/worktree-test.ts && bun scripts/acp-stream-test.ts && bun scripts/acp-turn-separator-test.ts",
     "test:block-mode": "bun scripts/acp-block-mode-test.ts",
     "test:turn-separator": "bun scripts/acp-turn-separator-test.ts",
     "test:extensions": "bun scripts/acp-extensions-test.ts",
@@ -29,7 +29,10 @@
     "test:thought": "bun scripts/acp-thought-test.ts",
     "test:tool-call-block": "bun scripts/acp-tool-call-block-test.ts",
     "acp:probe": "bun scripts/acp-probe.ts",
-    "acp:smoke": "bun scripts/acp-client-smoke.ts"
+    "acp:smoke": "bun scripts/acp-client-smoke.ts",
+    "test:worktree": "bun scripts/worktree-test.ts",
+    "doctor": "bun src/index.ts doctor",
+    "test:stream": "bun scripts/acp-stream-test.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.7.0",
@@ -38,6 +41,7 @@
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",
     "typescript": "^5.7.3",
     "typescript-language-server": "^6.0.0"

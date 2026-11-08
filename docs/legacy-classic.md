@@ -148,7 +148,7 @@ The TUI still discovers installed recipes via `goose recipe list --format json`,
 - **New sessions** create a dedicated **git worktree** under `<repo>/.worktree/<name>` with a matching branch
 - **Resume** detects existing worktree and launches Goose inside it — no manual checkout needed
 - **Isolation** — worktrees let you run Goose in a separate working tree without touching your main branches
-- **Cleanup** — deleting a session through cgoose also removes the worktree and branch
+- **Cleanup** — deleting a session removes the worktree; the branch goes only when it is fully merged (an unmerged branch is kept), and a worktree with uncommitted changes is never removed without an explicit confirmation
 - **Smart recovery** — detects stale worktree registrations and prunes them automatically
 - Skipped if not in a git repo or `CGOOSE_NO_WORKTREE=1` is set (default)
 - Force with `CGOOSE_FORCE_WORKTREE=1` or the `w` CLI flag

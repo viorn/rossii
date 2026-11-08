@@ -14,9 +14,108 @@ import { listSessionSets, saveSessionSet, deleteSessionSet, type SessionSet } fr
 import { getWorktreeMappings, removeWorktreeMapping } from "./project";
 import { deleteSessionById, formatSessionHint, type GooseSession } from "./sessions";
 import { listGooseExtensions } from "./goose-extensions";
-import { removeWorktree } from "./worktree";
+import { getWorktreeState, removeWorktree } from "./worktree";
+
+// ─── Session deletion helpers ────────────────────────────────────────────────
+
+/** A session's worktree, when it has one */
+type SessionWorktree = { session: GooseSession; name: string; dirty: boolean };
+
+function worktreeFor(session: GooseSession): SessionWorktree | null {
+  const name = session.name;
+  if (!name) return null;
+  const state = getWorktreeState(name);
+  if (!state?.exists) return null;
+  return { session, name, dirty: state.dirty };
+}
+
+/**
+ * Delete sessions and their worktrees.
+ *
+ * A worktree with uncommitted changes is never removed silently: the caller
+ * asks first (see `confirmDirtyWorktrees`) and passes `discardDirty` only when
+ * the user explicitly agreed to lose those changes.
+ */
+function deleteSessions(
+  sessions: GooseSession[],
+  opts: { discardDirty?: boolean } = {},
+): { ok: number; fail: number; kept: number } {
+  let ok = 0, fail = 0, kept = 0;
+  const mappings = getWorktreeMappings();
+
+  for (const session of sessions) {
+    const worktree = worktreeFor(session);
+
+    // Refuse to delete the session while its uncommitted work is protected
+    if (worktree?.dirty && !opts.discardDirty) {
+      kept++;
+      continue;
+    }
+
+    if (!deleteSessionById(session.id)) {
+      fail++;
+      continue;
+    }
+    ok++;
+
+    if (session.name) {
+      // Clean worktrees are removed with their merged branch; an unmerged
+      // branch is reported and kept by removeWorktree().
+      if (worktree || mappings[session.name]) {
+        removeWorktree(session.name, { force: Boolean(worktree?.dirty) });
+      }
+      removeWorktreeMapping(session.name);
+    }
+  }
+
+  return { ok, fail, kept };
+}
+
+/**
+ * Ask about sessions whose worktree has uncommitted changes.
+ * Returns true when they may be discarded, false to keep (skip) them.
+ */
+async function confirmDirtyWorktrees(worktrees: SessionWorktree[]): Promise<boolean | null> {
+  const dirty = worktrees.filter((w) => w.dirty);
+  if (dirty.length === 0) return false;
+
+  const names = dirty.map((w) => w.name);
+  const choice = await select({
+    message:
+      dirty.length === 1
+        ? `Session "${names[0]}" has uncommitted changes in its worktree. Delete it anyway?`
+        : `${dirty.length} sessions have uncommitted changes in their worktrees: ${names.join(", ")}`,
+    options: [
+      { value: "delete", label: dirty.length === 1 ? "Delete anyway (discard changes)" : "Delete them anyway (discard changes)" },
+      { value: "skip", label: dirty.length === 1 ? "Keep this session" : "Keep those sessions" },
+      { value: "cancel", label: "Cancel" },
+    ],
+    initialValue: "skip",
+  });
+
+  if (isCancel(choice) || choice === "cancel") return null;
+  return choice === "delete";
+}
 
 // ─── Session deletion dialog ─────────────────────────────────────────────────
+
+/** Delete `targets`, asking about dirty worktrees first. */
+async function runDeletion(targets: GooseSession[], label: string): Promise<void> {
+  const worktrees = targets.map(worktreeFor).filter((w): w is SessionWorktree => w !== null);
+  const discardDirty = await confirmDirtyWorktrees(worktrees);
+  if (discardDirty === null) {
+    log.info(pc.dim("Cancelled — nothing was deleted."));
+    return;
+  }
+
+  const s = spinner();
+  s.start("Deleting " + label + "...");
+  const { ok, fail, kept } = deleteSessions(targets, { discardDirty });
+  const parts = [ok + " deleted"];
+  if (kept > 0) parts.push(kept + " kept (uncommitted changes)");
+  if (fail > 0) parts.push(fail + " failed");
+  s.stop("Done: " + parts.join(", "));
+}
 
 export async function handleDeleteSessions(
   _allSessions: GooseSession[],
@@ -49,21 +148,7 @@ export async function handleDeleteSessions(
     });
     if (isCancel(confirmed) || !confirmed) return false;
 
-    const s = spinner();
-    s.start("Deleting " + emptySessions.length + " empty sessions...");
-    let ok = 0, fail = 0;
-    for (const session of emptySessions) {
-      if (deleteSessionById(session.id)) {
-        ok++;
-        // Clean up associated worktree (mapped by session NAME, not UUID id)
-        const wtMappings = getWorktreeMappings();
-        if (wtMappings[session.name]) {
-          removeWorktree(session.name);
-          removeWorktreeMapping(session.name);
-        }
-      } else fail++;
-    }
-    s.stop("Done: " + ok + " deleted, " + fail + " failed");
+    await runDeletion(emptySessions, emptySessions.length + " empty sessions");
     return true;
   }
 
@@ -78,20 +163,7 @@ export async function handleDeleteSessions(
     });
     if (isCancel(confirmed) || !confirmed) return false;
 
-    const s = spinner();
-    s.start("Deleting " + dirSessions.length + " sessions...");
-    let ok = 0, fail = 0;
-    for (const session of dirSessions) {
-      if (deleteSessionById(session.id)) {
-        ok++;
-        const wtMappings = getWorktreeMappings();
-        if (wtMappings[session.name]) {
-          removeWorktree(session.name);
-          removeWorktreeMapping(session.name);
-        }
-      } else fail++;
-    }
-    s.stop("Done: " + ok + " deleted, " + fail + " failed");
+    await runDeletion(dirSessions, dirSessions.length + " sessions");
     return true;
   }
 
@@ -114,22 +186,11 @@ export async function handleDeleteSessions(
 
   if (isCancel(selectedIDs) || !selectedIDs || selectedIDs.length === 0) return false;
 
-  const s = spinner();
-  s.start("Deleting " + selectedIDs.length + " session(s)...");
-  let ok = 0, fail = 0;
-  for (const id of selectedIDs as string[]) {
-    if (deleteSessionById(id)) {
-      ok++;
-      const session = _allSessions.find((s) => s.id === id);
-      const sessionName = session?.name ?? id;
-      const wtMappings = getWorktreeMappings();
-      if (wtMappings[sessionName]) {
-        removeWorktree(sessionName);
-        removeWorktreeMapping(sessionName);
-      }
-    } else fail++;
-  }
-  s.stop("Done: " + ok + " deleted, " + fail + " failed");
+  const selectedSessions = (selectedIDs as string[])
+    .map((id) => dirSessions.find((s) => s.id === id) ?? _allSessions.find((s) => s.id === id))
+    .filter((s): s is GooseSession => Boolean(s));
+
+  await runDeletion(selectedSessions, selectedSessions.length + " session(s)");
   return true;
 }
 

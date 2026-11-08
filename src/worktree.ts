@@ -7,11 +7,14 @@
  *
  * Worktrees live inside the repo in .worktree/ which is gitignored.
  * This keeps everything self-contained and discoverable from the project root.
+ *
+ * Every git call goes through `execFile`-style argv (never a shell string), so
+ * spaces, quotes and `$` in a repository path cannot break or hijack a command.
  */
 
-import { execSync } from "node:child_process";
-import { resolve, join, dirname, basename } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { resolve, join, dirname, basename, sep } from "node:path";
 import pc from "picocolors";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -19,33 +22,63 @@ import pc from "picocolors";
 /** Prefix for the .worktree directory name under repo root */
 const WORKTREE_DIR = ".worktree";
 
+// ─── Git helpers ─────────────────────────────────────────────────────────────
+
+interface GitOptions {
+  cwd?: string;
+  timeout?: number;
+}
+
+/** Run git with an argv array (no shell) and return stdout. Throws on failure. */
+function git(args: string[], opts: GitOptions = {}): string {
+  return execFileSync("git", args, {
+    encoding: "utf-8",
+    cwd: opts.cwd,
+    timeout: opts.timeout ?? 5_000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+/** Run git and return stdout, or null when the command fails. */
+function tryGit(args: string[], opts: GitOptions = {}): string | null {
+  try {
+    return git(args, opts);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Git repo detection ───────────────────────────────────────────────────────
 
 /** Check if CWD is inside a git repository */
 export function isInsideGitRepo(): boolean {
-  try {
-    execSync("git rev-parse --git-dir", {
-      encoding: "utf-8",
-      timeout: 3_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return tryGit(["rev-parse", "--git-dir"], { timeout: 3_000 }) !== null;
 }
 
-/** Get the repository root path */
+/**
+ * Get the main repository root.
+ *
+ * Inside a rossii worktree `<repo>/.worktree/<name>` git reports the worktree
+ * itself as `--show-toplevel`. Treating that as the repo root would nest the
+ * next worktree at `<repo>/.worktree/<name>/.worktree/<name>` and make the
+ * existing session worktree invisible — so the suffix is cut off here.
+ */
 export function getRepoRoot(): string | null {
   try {
-    return execSync("git rev-parse --show-toplevel", {
-      encoding: "utf-8",
-      timeout: 3_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    const top = git(["rev-parse", "--show-toplevel"], { timeout: 3_000 }).trim();
+    if (!top) return null;
+    return mainRepoRoot(top);
   } catch {
     return null;
   }
+}
+
+/** Strip a trailing `/.worktree/<name>` from a `--show-toplevel` result. */
+function mainRepoRoot(toplevel: string): string {
+  const root = resolve(toplevel);
+  const marker = `${sep}${WORKTREE_DIR}${sep}`;
+  const index = root.indexOf(marker);
+  return index > 0 ? root.slice(0, index) : root;
 }
 
 // ─── Naming helpers ───────────────────────────────────────────────────────────
@@ -71,12 +104,57 @@ export function getWorktreePath(repoRoot: string, sessionName: string): string {
 
 /** Check if a path is inside the .worktree directory (i.e. rossii-managed) */
 function isRossiiWorktree(repoRoot: string, path: string): boolean {
-  return resolve(path).startsWith(resolve(join(repoRoot, WORKTREE_DIR)));
+  const root = resolve(join(repoRoot, WORKTREE_DIR));
+  const candidate = resolve(path);
+  return candidate === root || candidate.startsWith(root + sep);
 }
 
 /** Get the git branch name for a session worktree */
 export function getBranchName(sessionName: string): string {
   return sanitize(sessionName);
+}
+
+// ─── Worktree state ──────────────────────────────────────────────────────────
+
+export interface WorktreeState {
+  /** Absolute worktree path (whether or not it exists) */
+  path: string;
+  /** Branch checked out in the worktree, or null when there is none */
+  branch: string | null;
+  /** Directory exists on disk */
+  exists: boolean;
+  /** Uncommitted changes (tracked or untracked) in the worktree */
+  dirty: boolean;
+}
+
+/** Is the worktree at `path` dirty? Returns false when it cannot be inspected. */
+function isDirty(path: string): boolean {
+  const status = tryGit(["status", "--porcelain"], { cwd: path, timeout: 3_000 });
+  return status !== null && status.trim().length > 0;
+}
+
+/** Branch currently checked out at `path`, or null for a detached HEAD. */
+function currentBranch(path: string): string | null {
+  const branch = tryGit(["-C", path, "rev-parse", "--abbrev-ref", "HEAD"], { timeout: 3_000 })?.trim();
+  return branch && branch !== "HEAD" ? branch : null;
+}
+
+/**
+ * Inspect a session's worktree without touching it — used by the delete dialog
+ * to warn before uncommitted work is thrown away. Returns null outside a repo.
+ */
+export function getWorktreeState(sessionName: string): WorktreeState | null {
+  const repoRoot = getRepoRoot();
+  if (!repoRoot) return null;
+
+  const path = getWorktreePath(repoRoot, sessionName);
+  const exists = existsSync(path);
+  return {
+    path,
+    branch: exists ? currentBranch(path) ?? getBranchName(sessionName) : null,
+    exists,
+    dirty: exists && isDirty(path),
+  };
 }
 
 // ─── Worktree CRUD ───────────────────────────────────────────────────────────
@@ -86,21 +164,15 @@ export function getBranchName(sessionName: string): string {
  * Also checks if the directory exists on disk.
  */
 function worktreeExists(path: string): boolean {
-  // Must exist both in git registry AND on disk
-  let inRegistry = false;
-  try {
-    const output = execSync("git worktree list --porcelain", {
-      encoding: "utf-8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    for (const line of output.split("\n")) {
-      if (line.startsWith("worktree ") && resolve(line.slice(9)) === resolve(path)) {
-        inRegistry = true;
-        break;
-      }
-    }
-  } catch { /* ignore */ }
+  const output = tryGit(["worktree", "list", "--porcelain"]);
+  if (output === null) return false;
+
+  // Entries are separated by a blank line; the first field is `worktree <path>`.
+  const inRegistry = output.split(/\n\n+/).some((entry) =>
+    entry.split("\n").some((line) =>
+      line.startsWith("worktree ") && resolve(line.slice(9).trim()) === resolve(path),
+    ),
+  );
   return inRegistry && existsSync(path);
 }
 
@@ -118,17 +190,11 @@ export function createWorktree(sessionName: string): string | null {
   // Already exists — just return the path
   if (worktreeExists(path)) return path;
 
-  // Check for uncommitted changes
-  try {
-    const status = execSync("git status --porcelain", {
-      encoding: "utf-8",
-      timeout: 3_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-    if (status.length > 0) {
-      console.log(pc.yellow("⚠ uncommitted changes detected — creating worktree from current HEAD"));
-    }
-  } catch { /* ignore */ }
+  // Check for uncommitted changes in the main worktree
+  const status = tryGit(["status", "--porcelain"], { cwd: repoRoot, timeout: 3_000 });
+  if (status !== null && status.trim().length > 0) {
+    console.log(pc.yellow("⚠ uncommitted changes detected — creating worktree from current HEAD"));
+  }
 
   // Ensure parent dir exists — git worktree add won't create it
   const parentDir = dirname(path);
@@ -138,34 +204,16 @@ export function createWorktree(sessionName: string): string | null {
 
   // Create worktree with a new branch from HEAD
   try {
-    execSync(`git worktree add -b "${branch}" "${path}"`, {
-      encoding: "utf-8",
-      timeout: 15_000,
-      stdio: ["ignore", "pipe", "pipe"],
-      cwd: repoRoot,
-    });
+    git(["worktree", "add", "-b", branch, path], { cwd: repoRoot, timeout: 15_000 });
     return path;
   } catch (err) {
     // Stale registration — worktree missing from disk but git still knows it.
     // Prune it and try again.
     if (String(err).includes("missing but already registered")) {
+      tryGit(["worktree", "prune"], { cwd: repoRoot });
+      console.log(pc.dim(`  🧹 Pruned stale worktree registration`));
       try {
-        execSync(`git worktree prune`, {
-          encoding: "utf-8",
-          timeout: 5_000,
-          stdio: ["ignore", "pipe", "pipe"],
-          cwd: repoRoot,
-        });
-        console.log(pc.dim(`  🧹 Pruned stale worktree registration`));
-      } catch { /* best effort */ }
-      // Retry full creation
-      try {
-        execSync(`git worktree add -b "${branch}" "${path}"`, {
-          encoding: "utf-8",
-          timeout: 15_000,
-          stdio: ["ignore", "pipe", "pipe"],
-          cwd: repoRoot,
-        });
+        git(["worktree", "add", "-b", branch, path], { cwd: repoRoot, timeout: 15_000 });
         return path;
       } catch (e) {
         console.log(pc.red(`✗ Failed to create worktree: ${e}`));
@@ -175,12 +223,7 @@ export function createWorktree(sessionName: string): string | null {
 
     // Branch may already exist — try attaching to existing branch
     try {
-      execSync(`git worktree add "${path}" "${branch}"`, {
-        encoding: "utf-8",
-        timeout: 15_000,
-        stdio: ["ignore", "pipe", "pipe"],
-        cwd: repoRoot,
-      });
+      git(["worktree", "add", path, branch], { cwd: repoRoot, timeout: 15_000 });
       return path;
     } catch (e2) {
       console.log(pc.red(`✗ Failed to create worktree: ${e2}`));
@@ -189,32 +232,113 @@ export function createWorktree(sessionName: string): string | null {
   }
 }
 
+/** Result of removing a session worktree. */
+export type WorktreeRemoval =
+  /** Worktree (and optionally its branch) is gone */
+  | "removed"
+  /** Uncommitted changes found and `force` was not set — nothing was deleted */
+  | "dirty"
+  /** Nothing to remove, or git refused */
+  | "failed";
+
+export interface RemoveWorktreeOptions {
+  /** Remove even with uncommitted changes (they are lost). Default false. */
+  force?: boolean;
+  /**
+   * Delete the session branch once the worktree is gone. Default true, but a
+   * branch with commits that are not reachable from HEAD is always kept (and
+   * reported) so deleting a session cannot discard work that was never merged.
+   */
+  pruneBranch?: boolean;
+}
+
 /**
  * Remove a git worktree for a session.
- * Returns true on success.
+ *
+ * Refuses to delete a dirty worktree unless `force` is set, so a mis-click in
+ * the session picker cannot throw away uncommitted work. Removal is limited to
+ * paths under `<repo>/.worktree/`; any other path is never touched.
  */
-export function removeWorktree(sessionName: string): boolean {
+export function removeWorktree(
+  sessionName: string,
+  opts: RemoveWorktreeOptions = {},
+): WorktreeRemoval {
   const repoRoot = getRepoRoot();
-  if (!repoRoot) return false;
+  if (!repoRoot) return "failed";
 
   const path = getWorktreePath(repoRoot, sessionName);
+  if (!isRossiiWorktree(repoRoot, path)) return "failed";
 
-  // Remove worktree (force if dirty — we're deleting anyway)
+  const exists = existsSync(path);
+  const registered = worktreeExists(path);
+
+  // Nothing to remove
+  if (!exists && !registered) {
+    if (opts.pruneBranch !== false) pruneUnmergedBranch(repoRoot, getBranchName(sessionName));
+    return "removed";
+  }
+
+  if (exists && !opts.force && isDirty(path)) return "dirty";
+
+  const branch = exists ? currentBranch(path) : null;
+
   try {
-    execSync(`git worktree remove "${path}" --force`, {
-      encoding: "utf-8",
-      timeout: 10_000,
-      stdio: ["ignore", "pipe", "pipe"],
+    git(["worktree", "remove", ...(opts.force ? ["--force"] : []), path], {
       cwd: repoRoot,
+      timeout: 10_000,
     });
+  } catch {
+    // The directory may be stale (not a registered worktree) or git refused.
+    // Drop the registration first, then the directory — but only inside
+    // .worktree/, which the guard above already proved.
+    tryGit(["worktree", "prune"], { cwd: repoRoot });
+    if (existsSync(path)) {
+      try {
+        rmSync(path, { recursive: true, force: true });
+      } catch {
+        return "failed";
+      }
+    }
+  }
+
+  if (existsSync(path)) return "failed";
+
+  if (opts.pruneBranch !== false) {
+    pruneUnmergedBranch(repoRoot, branch ?? getBranchName(sessionName));
+  }
+  return "removed";
+}
+
+/** Is every commit of `branch` already reachable from the repo's HEAD? */
+function branchFullyMerged(repoRoot: string, branch: string): boolean {
+  try {
+    git(["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repoRoot, timeout: 5_000 });
     return true;
   } catch {
-    // Path may not exist as worktree — clean up directory manually
-    try {
-      execSync(`rm -rf "${path}"`, { timeout: 5_000 });
-    } catch { /* ignore */ }
     return false;
   }
+}
+
+/** Does a local branch with this name exist? */
+function localBranchExists(repoRoot: string, branch: string): boolean {
+  return tryGit(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repoRoot }) !== null;
+}
+
+/**
+ * Delete the session branch, but only when all of its commits are already in
+ * HEAD. An unmerged branch is kept (and its name printed) — a deleted session
+ * must not be the reason a piece of work disappears.
+ */
+function pruneUnmergedBranch(repoRoot: string, branch: string): void {
+  if (!branch || !localBranchExists(repoRoot, branch)) return;
+
+  if (!branchFullyMerged(repoRoot, branch)) {
+    console.log(pc.dim(`  🌿 kept branch ${pc.green(branch)} (has commits not in HEAD)`));
+    return;
+  }
+
+  // Fails harmlessly when the branch is checked out in another worktree.
+  tryGit(["branch", "-D", branch], { cwd: repoRoot, timeout: 5_000 });
 }
 
 /**
@@ -231,32 +355,18 @@ export function getRepoWorktreePaths(): string[] {
   const repoRoot = getRepoRoot();
   if (!repoRoot) return [];
 
+  const output = tryGit(["worktree", "list", "--porcelain"]);
+  if (output === null) return [];
+
   const worktrees: string[] = [];
-  try {
-    const output = execSync("git worktree list --porcelain", {
-      encoding: "utf-8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    // Split by double newline (entries separated by blank lines)
-    const entries = output.split(/\n\n+/);
-    for (const entry of entries) {
-      if (!entry.trim()) continue;
-      let path = "";
-
-      for (const line of entry.split("\n")) {
-        if (line.startsWith("worktree ")) {
-          path = resolve(line.slice(9).trim());
-        }
-      }
-
-      if (path && isRossiiWorktree(repoRoot, path)) {
-        worktrees.push(path);
-      }
+  for (const entry of output.split(/\n\n+/)) {
+    if (!entry.trim()) continue;
+    let path = "";
+    for (const line of entry.split("\n")) {
+      if (line.startsWith("worktree ")) path = resolve(line.slice(9).trim());
     }
-  } catch { /* ignore */ }
-
+    if (path && isRossiiWorktree(repoRoot, path)) worktrees.push(path);
+  }
   return worktrees;
 }
 
@@ -292,38 +402,26 @@ export function getSessionWorktreePath(sessionName: string): string | null {
  * Useful for session listing: sessions in worktrees should show up
  * even though their working_dir differs from the main repo CWD.
  *
- * Extracts session name from branch name (rossii-<name> → <name>).
+ * Extracts the session name from the directory name inside .worktree/.
  */
 export function getWorktreeSessionNames(): string[] {
   const repoRoot = getRepoRoot();
   if (!repoRoot) return [];
 
+  const output = tryGit(["worktree", "list", "--porcelain"]);
+  if (output === null) return [];
+
   const names: string[] = [];
-  try {
-    const output = execSync("git worktree list --porcelain", {
-      encoding: "utf-8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const entries = output.split(/\n\n+/);
-    for (const entry of entries) {
-      if (!entry.trim()) continue;
-      let path = "";
-
-      for (const line of entry.split("\n")) {
-        if (line.startsWith("worktree ")) {
-          path = resolve(line.slice(9).trim());
-        }
-      }
-
-      if (path && isRossiiWorktree(repoRoot, path)) {
-        // Extract session name from the directory name inside .worktree/
-        const name = basename(path);
-        if (name) names.push(name);
-      }
+  for (const entry of output.split(/\n\n+/)) {
+    if (!entry.trim()) continue;
+    let path = "";
+    for (const line of entry.split("\n")) {
+      if (line.startsWith("worktree ")) path = resolve(line.slice(9).trim());
     }
-  } catch { /* ignore */ }
-
+    if (path && isRossiiWorktree(repoRoot, path)) {
+      const name = basename(path);
+      if (name) names.push(name);
+    }
+  }
   return names;
 }

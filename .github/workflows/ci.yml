@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-and-test:
+    name: typecheck + tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run check
+
+      # The suites are self-contained: no goose, no sqlite3, no network.
+      - name: Unit + integration tests
+        run: bun run test
+
+      - name: CLI entry points do not crash
+        run: |
+          bun src/index.ts --version
+          bun src/index.ts --help > /dev/null
+          set +e
+          bun src/index.ts doctor | tee /tmp/rossii-doctor.txt
+          status=$?
+          set -e
+          # CI has no goose; doctor must say so instead of throwing.
+          test "$status" -eq 1
+          grep -q "not found on PATH" /tmp/rossii-doctor.txt

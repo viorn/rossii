@@ -19,7 +19,7 @@
  * - Skips worktree creation if not in a git repo or ROSSII_NO_WORKTREE=1 is set
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
@@ -310,7 +310,7 @@ export interface AcpLaunchOptions {
 /** Check that the installed goose supports the `acp` subcommand. */
 function gooseAcpSupported(): boolean {
   try {
-    execSync("goose acp --help", {
+    execFileSync("goose", ["acp", "--help"], {
       encoding: "utf-8",
       timeout: 5_000,
       stdio: ["ignore", "pipe", "pipe"],

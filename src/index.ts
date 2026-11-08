@@ -34,10 +34,12 @@ import { resolve } from "node:path";
 import { intro, log } from "@clack/prompts";
 import pc from "picocolors";
 
+import pkg from "../package.json";
 import { setEnv, getCurrentDirName } from "./utils";
 import { readRossiiConfig } from "./rossii-config";
 import { getConfigProviders, getDiscoveredCustomProviders, loadConfigEnvVars } from "./config";
 import { detectOllama } from "./models";
+import { runDoctor } from "./doctor";
 
 import {
   LEGACY_CHAT_ALIASES, resolveChatMode,
@@ -48,7 +50,60 @@ import { resolveLaunchMode, stepLaunch } from "./wizard-launch";
 
 // ─── Main TUI ────────────────────────────────────────────────────────────────
 
+const HELP = `
+rossii ${pkg.version} — an ACP terminal UI for Goose
+
+Usage:
+  rossii [flags]        open the wizard (chat mode by default)
+  rossii doctor         print a diagnostic report
+  rossii --version      print the version
+  rossii --help         print this help
+
+Flags (single letters, tmux style; leading dashes optional):
+  a   resume the last session in this directory
+  n   new session (last provider/model, no wizard)
+  s   pick a session, then launch with the last provider/model
+  e   edit mode: choose a session → user message → roll back to it
+  m   no git worktree isolation
+  w   force git worktree isolation (overrides ROSSII_NO_WORKTREE=1)
+
+  Pairs: ma ms mn (m + a/s/n), wa ws wn (w + a/s/n), me we.
+
+Environment (the legacy CGOOSE_* spelling still works):
+  ROSSII_ACP_MODE=classic       use goose's own TUI instead of the chat
+  ROSSII_CHAT_MAIN_SCREEN=1     inline renderer instead of the alternate screen
+  ROSSII_ACP_BLOCKS=closed      thought/tool blocks: live|open|done|closed
+  ROSSII_ACP_STEER=0            disable steering during a turn
+  ROSSII_ACP_IDLE_TIMEOUT_MS    cancel a turn after this much silence (0 = off)
+  ROSSII_ACP_PROMPT_TIMEOUT_MS  absolute cap on a single turn (0 = off)
+  ROSSII_NO_WORKTREE=1          never create worktrees
+  ROSSII_FORCE_WORKTREE=1       always create worktrees
+
+Sessions live in goose's own DB; sets, config and per-project history live in
+~/.config/rossii. Run \`rossii doctor\` when something does not work.
+`;
+
+function printHelp(): void {
+  console.log(HELP.trimStart());
+}
+
 async function main() {
+  // Plain-word commands and long flags are handled before the TUI starts, so
+  // they work without a provider, a config or a terminal.
+  const rawArgs = process.argv.slice(2);
+  const command = rawArgs[0]?.replace(/^-+/, "").toLowerCase();
+  if (command === "version" || command === "v") {
+    console.log(pkg.version);
+    return;
+  }
+  if (command === "help" || command === "h") {
+    printHelp();
+    return;
+  }
+  if (command === "doctor") {
+    process.exit(runDoctor());
+  }
+
   console.clear();
   intro(`${pc.bgCyan(pc.black(" rossii "))} ${pc.dim("— an ACP terminal UI for Goose")}`);
 

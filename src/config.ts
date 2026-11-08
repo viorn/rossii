@@ -3,7 +3,7 @@
  */
 
 import { readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import process from "node:process";
@@ -12,6 +12,11 @@ import { load as yamlLoad } from "js-yaml";
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 const CONFIG_PATH = join(homedir(), ".config", "goose", "config.yaml");
+
+/** Path of goose's own config, for diagnostics. */
+export function getGooseConfigPath(): string {
+  return CONFIG_PATH;
+}
 const CUSTOM_PROVIDERS_DIR = join(homedir(), ".config", "goose", "custom_providers");
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -65,7 +70,7 @@ function readGooseSecrets(): Record<string, string> {
 
   // 1) Try system keyring via libsecret (GNOME Keyring, KDE Wallet, KeePassXC, etc.)
   try {
-    const output = execSync("secret-tool search --all service goose", {
+    const output = execFileSync("secret-tool", ["search", "--all", "service", "goose"], {
       encoding: "utf-8",
       timeout: 2_000,
       stdio: ["pipe", "pipe", "pipe"],

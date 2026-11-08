@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build linux-x86_64
+    # An older glibc host keeps the artifact runnable on older distributions;
+    # build.sh refuses to publish a binary with a foreign loader.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Tag must match package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" = "${GITHUB_REF_NAME}" || {
+            echo "tag ${GITHUB_REF_NAME} does not match package.json ${version}" >&2
+            exit 1
+          }
+
+      - name: Build
+        run: bash build.sh
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rossii-*-linux-x86_64
+            rossii-*-linux-x86_64.sha256
+          generate_release_notes: true

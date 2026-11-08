@@ -45,8 +45,10 @@ the chat opens immediately (`quickLaunch` in `src/wizard-launch.ts`). Classic mo
 Implementation of the wizard: `src/index.ts` is a thin `main()` (CLI flags, worktree /
 renderer resolution, the step loop), `src/wizard-steps.ts` holds steps 1–5 plus
 `resolveChatMode`/`LEGACY_CHAT_ALIASES`, `src/wizard-launch.ts` resolves the CLI launch
-mode and renders the summary, and `src/wizard-sessions.ts` holds the session-deletion
-dialog and the set create/manage wizards.
+mode and renders the summary, `src/wizard-sessions.ts` holds the session-deletion
+dialog and the set create/manage wizards, and `src/doctor.ts` is `rossii doctor`
+(the diagnostics command: goose/acp, config and DB paths, providers, sets, session
+counts, worktree state, resolved `ROSSII_*` settings and the warnings the chat would print).
 
 If no project meta exists yet, first option is selected (None → first provider → first model).
 
@@ -97,8 +99,14 @@ When creating a new session inside a git repo:
 
 1. Worktree at `<repo>/.worktree/<sanitized-name>` with matching branch
 2. Goose runs inside that worktree — isolated from main branches
-3. On resume, detects and reuses existing worktree
-4. On session deletion, cleans up worktree and branch
+3. On resume, detects and reuses existing worktree — `getRepoRoot()` cuts a
+   `/.worktree/<name>` suffix from `git rev-parse --show-toplevel`, so launching rossii
+   from inside a worktree resolves the main repo instead of nesting a second one
+4. On session deletion, removes the worktree; the branch is deleted only when all of its
+   commits are already in HEAD (`merge-base --is-ancestor`), otherwise it is kept and
+   named in the output. A worktree with uncommitted changes is never removed silently:
+   `removeWorktree()` returns `"dirty"` and the delete dialog asks "discard / keep / cancel".
+   Git calls use argv (`execFileSync`), never shell strings, so repo paths with spaces work
 
 Control:
 - `ROSSII_NO_WORKTREE=1` — skip worktree creation
@@ -188,7 +196,11 @@ warns in the TUI and keeps the ACP default.
   (`formatCharCount` in `src/utils.ts` is shared by both). The count accumulates per chunk
   (`[...chunk].length`, code points) instead of re-measuring the buffer, which would make a long
   answer quadratic. A tool call splits the answer (`closeMessage`), and each half then carries
-  its own label and count.
+  its own label and count. A message whose chunks are only whitespace/zero-width (`hasVisibleAnswerText`
+  in `chat-stream.ts`) never opens a block: goose sends a bare `"\n\n"` between a tool call and
+  the next text, and those used to leave empty `❮ Answer · 0 chars` bars. The whitespace is buffered
+  in `ctx.pendingAnswer` and prefixes the first visible chunk; a message that never produces one
+  stays hidden.
 - **Steering** (`src/acp/steer.ts`, pure + unit-tested): Enter during a turn adds a user message to
   the *running* prompt (`_goose/unstable/session/steer`) instead of doing nothing — no second
   `session/prompt`, no cancel, no lost work. goose announces the turn through
@@ -397,13 +409,18 @@ warns in the TUI and keeps the ACP default.
 - Requires a goose with the `acp` subcommand (1.50.0 and 1.57.0 verified; `_goose/unstable/*` methods degrade
   to warnings when absent); `launchGooseAcp` checks `goose acp --help` at startup and falls
   back to the classic TUI otherwise
+- Sessions listing/deletion uses `bun:sqlite` (`src/sessions.ts`): no external `sqlite3`
+  binary, the reader opens the DB read-only, and `usage_ledger` is skipped when an older
+  goose did not create it. Diagnostics live in `rossii doctor` (`src/doctor.ts`);
+  `rossii --version` / `--help` are handled before the TUI starts
 - Verification scripts: `bun run test` (unit tests for `extensions.ts`, `session-meta.ts`,
   `session-config.ts`, `steer.ts`, `slash-commands.ts`, `command-complete.ts`,
-  `model-options.ts`, the db-backed
-  session listing, the overlay
-  components and the
-  tool-call block + its `tool-call-content.ts` wire mapping — no goose
-  needed), `bun scripts/acp-probe.ts`
+  `model-options.ts`, the overlay components, the tool-call block + its
+  `tool-call-content.ts` wire mapping, the streaming renderer (`scripts/acp-stream-test.ts`),
+  the db-backed session listing, and
+  `scripts/worktree-test.ts` (real git in a temp repo: create/resume, dirty refusal,
+  merged vs unmerged branch, path with spaces, no nested worktree) — no
+  goose needed), `bun scripts/acp-probe.ts`
   (raw protocol), `bun scripts/acp-steer-probe.ts` (steering against a live agent: run id, ack,
   pickup, `ids match: YES`; it parses the meta with `src/acp/steer.ts`, so the shipped code is what
   gets proven) and `bun scripts/acp-client-smoke.ts` (`src/acp/client.ts` without the TUI; checks the

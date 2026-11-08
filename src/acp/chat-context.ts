@@ -234,6 +234,13 @@ export interface ChatContext {
   currentMd: Markdown | null;
   currentMessageId: string | null;
   streamBuffer: string;
+  /**
+   * Whitespace-only chunks seen before the first visible one of a message.
+   * goose sends "\n\n" between a tool call and the text that follows it; the
+   * block is not created until something visible arrives, so an empty answer
+   * never reaches the transcript (see `hasVisibleAnswerText` in chat-stream.ts).
+   */
+  pendingAnswer: string;
   /** Label of the block being streamed (`❮ Answer · N chars`), null when idle. */
   answerLabelLine: Text | null;
   answerChars: number;
@@ -371,6 +378,7 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
     currentMd: null,
     currentMessageId: null,
     streamBuffer: "",
+    pendingAnswer: "",
     answerLabelLine: null,
     answerChars: 0,
     currentThought: null,

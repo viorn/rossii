@@ -9,12 +9,15 @@
  * user-visible message) with the CLI as a fallback.
  *
  * Runs against a throwaway `$HOME` in child processes, so the developer's real
- * `sessions.db` is never touched. Skips (exit 0) when sqlite3 is missing.
+ * `sessions.db` is never touched. Fixtures are built with Bun's built-in SQLite
+ * (`bun:sqlite`), the same driver `src/sessions.ts` reads them with — no
+ * external `sqlite3` binary needed.
  *
  * Usage: bun run test   (or `bun scripts/sessions-list-test.ts`)
  */
 
 import assert from "node:assert/strict";
+import { Database } from "bun:sqlite";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,13 +26,6 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SESSIONS_MODULE = resolve(HERE, "../src/sessions.ts");
-
-try {
-  execFileSync("sqlite3", ["--version"], { stdio: "ignore" });
-} catch {
-  console.log("⚠ sqlite3 not available — session listing tests skipped");
-  process.exit(0);
-}
 
 // ─── Fixture ─────────────────────────────────────────────────────────────────
 
@@ -103,7 +99,7 @@ const EXPECTED_ORDER = ["acp_newest", "user_middle", "scheduled_oldest"];
 const quote = (value: string | null): string =>
   value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
 
-function fixtureSql(): string {
+function fixtureSql(opts: { usageLedger?: boolean } = {}): string {
   const sessions = FIXTURE.map((s) => `INSERT INTO sessions
     (id, name, description, session_type, working_dir, created_at, updated_at,
      provider_name, model_config_json, recipe_json)
@@ -113,18 +109,26 @@ function fixtureSql(): string {
   const messages = FIXTURE.flatMap((s) => (s.messages ?? []).map(([ts, meta]) =>
     `INSERT INTO messages (session_id, role, content_json, created_timestamp, metadata_json)
      VALUES ('${s.id}', 'user', '{}', ${ts}, ${quote(meta)});`)).join("\n");
-  return [SCHEMA, sessions, messages].join("\n");
+  const schema = opts.usageLedger === false
+    ? SCHEMA.replace(/CREATE TABLE usage_ledger[\s\S]*?\);\n/, "")
+    : SCHEMA;
+  return [schema, sessions, messages].join("\n");
 }
 
 /** Temp `$HOME` with a db (or not) plus a `goose` shim for the CLI fallback. */
-function makeHome(opts: { db?: "fixture" | "broken" } = {}): string {
+function makeHome(opts: { db?: "fixture" | "fixture-no-ledger" | "broken" } = {}): string {
   const home = mkdtempSync(join(tmpdir(), "rossii-sessions-home-"));
   if (opts.db) {
     const dbDir = join(home, ".local/share/goose/sessions");
     mkdirSync(dbDir, { recursive: true });
     const db = join(dbDir, "sessions.db");
-    if (opts.db === "fixture") execFileSync("sqlite3", [db], { input: fixtureSql(), encoding: "utf-8" });
-    else writeFileSync(db, "this is not a sqlite database");
+    if (opts.db === "broken") {
+      writeFileSync(db, "this is not a sqlite database");
+    } else {
+      const database = new Database(db);
+      database.exec(fixtureSql({ usageLedger: opts.db !== "fixture-no-ledger" }));
+      database.close();
+    }
   }
 
   const binDir = join(home, "bin");
@@ -256,12 +260,23 @@ checks.push(["GOOSE_PATH_ROOT moves the data dir", () => {
   tracked.push(root);
   const dataDir = join(root, "data/sessions");
   mkdirSync(dataDir, { recursive: true });
-  execFileSync("sqlite3", [join(dataDir, "sessions.db")], { input: fixtureSql(), encoding: "utf-8" });
+  const rootDb = new Database(join(dataDir, "sessions.db"));
+  rootDb.exec(fixtureSql());
+  rootDb.close();
   // HOME points at a throwaway without a db: only GOOSE_PATH_ROOT can supply one.
   const home = makeHome();
   tracked.push(home);
   const fromRoot = runChild(home, "list", { GOOSE_PATH_ROOT: root }) as Array<Record<string, any>>;
   assert.deepEqual(fromRoot.map((s) => s.id), EXPECTED_ORDER);
+}]);
+
+checks.push(["deleteSessionById works without a usage_ledger table", () => {
+  // goose added usage_ledger later; an older sessions.db must still be usable.
+  const home = makeHome({ db: "fixture-no-ledger" });
+  tracked.push(home);
+  const result = runChild(home, "delete") as { ok: boolean; remaining: string[] };
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.remaining, ["acp_newest", "scheduled_oldest"]);
 }]);
 
 checks.push(["deleteSessionById removes the session and its messages", () => {
@@ -270,11 +285,10 @@ checks.push(["deleteSessionById removes the session and its messages", () => {
   const result = runChild(home, "delete") as { ok: boolean; remaining: string[] };
   assert.equal(result.ok, true);
   assert.deepEqual(result.remaining, ["acp_newest", "scheduled_oldest"]);
-  const left = execFileSync("sqlite3", [
-    join(home, ".local/share/goose/sessions/sessions.db"),
-    "SELECT COUNT(*) FROM messages WHERE session_id = 'user_middle';",
-  ], { encoding: "utf-8" }).trim();
-  assert.equal(left, "0", "messages of a deleted session must go too");
+  const left = new Database(join(home, ".local/share/goose/sessions/sessions.db"), { readonly: true });
+  const count = left.query("SELECT COUNT(*) AS n FROM messages WHERE session_id = ?").get("user_middle") as { n: number };
+  left.close();
+  assert.equal(count.n, 0, "messages of a deleted session must go too");
 }]);
 
 // ─── Runner ──────────────────────────────────────────────────────────────────

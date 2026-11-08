@@ -10,7 +10,7 @@
  * We use `goose recipe list --format json` to get canonical list.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -174,7 +174,7 @@ export interface RecipeInfo {
  */
 export function discoverRecipes(): RecipeInfo[] {
   try {
-    const output = execSync("goose recipe list --format json", {
+    const output = execFileSync("goose", ["recipe", "list", "--format", "json"], {
       encoding: "utf-8",
       timeout: 10_000,
       stdio: ["ignore", "pipe", "pipe"],

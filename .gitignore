@@ -1,5 +1,4 @@
 node_modules/
-bun.lock
 .goose-tui.json
 rossii
 rossii-*-linux-*
