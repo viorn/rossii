@@ -77,7 +77,10 @@ Environment (the legacy CGOOSE_* spelling still works):
   ROSSII_ACP_BLOCKS=closed      thought/tool blocks: live|open|done|closed
   ROSSII_ACP_STEER=0            disable steering during a turn
   ROSSII_ACP_IDLE_TIMEOUT_MS    cancel a turn after this much silence (0 = off)
+  ROSSII_ACP_TOOL_TIMEOUT_MS    silence allowed while a tool call is running
   ROSSII_ACP_PROMPT_TIMEOUT_MS  absolute cap on a single turn (0 = off)
+                                (the environment beats /timeout and the saved
+                                 values, and applies to this run only)
   ROSSII_NO_WORKTREE=1          never create worktrees
   ROSSII_FORCE_WORKTREE=1       always create worktrees
 

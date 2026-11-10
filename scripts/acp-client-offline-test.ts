@@ -27,10 +27,16 @@ import {
   resolveTimeoutMs,
 } from "../src/acp/timeouts";
 
-assert.deepEqual(resolveTimeoutMs(undefined, 5, "X"), { ms: 5, invalid: null });
-assert.deepEqual(resolveTimeoutMs("   ", 5, "X"), { ms: 5, invalid: null });
-assert.deepEqual(resolveTimeoutMs("1500", 5, "X"), { ms: 1500, invalid: null });
-assert.deepEqual(resolveTimeoutMs("0", 5, "X"), { ms: 0, invalid: null }, "0 disables the guard");
+// The full shape (including `source`) is pinned by scripts/acp-timeouts-test.ts;
+// here only the value and the "no warning" part matter.
+assert.deepEqual(
+  [resolveTimeoutMs(undefined, 5, "X").ms, resolveTimeoutMs(undefined, 5, "X").invalid],
+  [5, null],
+  "an unset variable keeps the fallback",
+);
+assert.deepEqual([resolveTimeoutMs("   ", 5, "X").ms, resolveTimeoutMs("   ", 5, "X").invalid], [5, null]);
+assert.deepEqual([resolveTimeoutMs("1500", 5, "X").ms, resolveTimeoutMs("1500", 5, "X").invalid], [1500, null]);
+assert.deepEqual([resolveTimeoutMs("0", 5, "X").ms, resolveTimeoutMs("0", 5, "X").invalid], [0, null], "0 disables the guard");
 assert.equal(resolveTimeoutMs("-1", 5, "X").ms, 5, "a negative timeout is rejected");
 const junk = resolveTimeoutMs("5m", 5, "ROSSII_ACP_IDLE_TIMEOUT_MS");
 assert.equal(junk.ms, 5, "junk falls back to the default");

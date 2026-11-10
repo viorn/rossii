@@ -47,6 +47,7 @@ export const CHAT_COMMANDS: readonly AutocompleteItem[] = [
   { value: "fork", label: "fork", description: "Copy the session and continue in the copy" },
   { value: "think", label: "think", description: "Expand or collapse the thinking blocks (`all`)" },
   { value: "tool", label: "tool", description: "Expand or collapse the tool-call blocks (`all`)" },
+  { value: "timeout", label: "timeout", description: "Idle/tool watchdog: `/timeout 30m`, `/timeout tool 1h`, `reset`" },
   { value: "edit", label: "edit", description: "Edit the draft in $EDITOR (Ctrl+E)" },
   { value: "fetch", label: "fetch", description: "Fetch the model list from the provider's API" },
   { value: "help", label: "help", description: "List the commands — the chat's and goose's" },

@@ -2,8 +2,8 @@
  * chat-ui.ts — UI assembly and process lifetime.
  *
  * Functions: setupUi (loader, editor, layout), startChat (start + hints),
- * attachInputListener (Ctrl+P/O/E, Esc-arming, Ctrl+C), startIdleWatchdog,
- * attachAgentExit, shutdown.
+ * attachInputListener (Ctrl+P/O/E, Esc-arming, Ctrl+C), startIdleWatchdog /
+ * stopIdleWatchdog, attachAgentExit, shutdown.
  */
 
 import pc from "picocolors";
@@ -28,6 +28,8 @@ import { editorTheme } from "./chat-context";
 import { buildCommandItems, createCommandCompleter } from "./command-complete";
 import { closeThought, closeToolBlocks, renderHeader, renderStatus } from "./chat-stream";
 import { showConfigMenu, showModelMenu } from "./chat-config";
+import { currentTimeouts, timeoutWarnings } from "./timeout-state";
+import { planIdleAction } from "./timeouts";
 import { abandonPendingSteers, promptInEditor, setLoader } from "./chat-io";
 import { cancelAllPermissions } from "./chat-handlers";
 import type { ChatContext } from "./chat-context";
@@ -123,8 +125,10 @@ export function startChat(ctx: ChatContext): void {
   ctx.tui.setFocus(ctx.editor);
   renderHeader(ctx);
   renderStatus(ctx);
-  const settingWarnings = [ctx.idleTimeout.invalid, ctx.turnTimeout.invalid, ctx.blockModeInvalid]
-    .filter((warning): warning is string => warning !== null);
+  const settingWarnings = [
+    ...timeoutWarnings(currentTimeouts(ctx)),
+    ...(ctx.blockModeInvalid ? [ctx.blockModeInvalid] : []),
+  ];
   for (const warning of [...settingWarnings, ...(ctx.steeringWarning ? [ctx.steeringWarning] : [])]) {
     ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${warning}`), 1, 0));
   }
@@ -236,28 +240,72 @@ export function attachInputListener(ctx: ChatContext): void {
 // ─── Watchdogs ───────────────────────────────────────────────────────────────
 
 /**
- * Idle watchdog: a long but *live* turn must not be interrupted, a silent one
- * must not leave the UI stuck with `busy` forever (the request itself has no
- * deadline until the hard cap in ./timeouts.ts).
+ * Check once a second and decide from the *current* thresholds, so `/timeout`
+ * takes effect on the next tick: the timer never has to be re-armed, and a
+ * lowered threshold cannot be missed by a tick sized for the old one. The tick
+ * returns on `busy` before doing anything else, so an idle chat costs one
+ * comparison per second.
+ */
+const WATCHDOG_TICK_MS = 1_000;
+
+/**
+ * The tool call that has not finished yet, if any.
+ *
+ * `isFinished` — not the status — is the test: goose sends the initial
+ * `tool_call` with status `pending` and only adds `in_progress` when something
+ * live happens, so a `sleep 600` stays `pending` for ten minutes while the
+ * agent is perfectly busy.
+ */
+function runningToolName(ctx: ChatContext): string | null {
+  for (const block of ctx.toolCallBlocks.values()) {
+    if (!block.isFinished) return block.title || "tool";
+  }
+  return null;
+}
+
+export function stopIdleWatchdog(ctx: ChatContext): void {
+  if (!ctx.idleTimer) return;
+  clearInterval(ctx.idleTimer);
+  ctx.idleTimer = null;
+}
+
+/**
+ * Idle watchdog: a long but *live* turn must not be interrupted, and a silent
+ * one must not leave the UI stuck with `busy` forever (the request itself has
+ * no deadline until the hard cap in ./timeouts.ts).
+ *
+ * Three states are not "the agent went silent": the user owes an answer
+ * (a permission prompt or a menu is on screen), a tool call is still running
+ * (its own, much larger, threshold applies — `ROSSII_ACP_TOOL_TIMEOUT_MS`), and
+ * the turn is already over. The decision itself is pure — `planIdleAction()`
+ * in ./timeouts.ts.
  */
 export function startIdleWatchdog(ctx: ChatContext): void {
-  if (ctx.idleTimeout.ms <= 0) return;
-  const checkEvery = Math.max(1_000, Math.min(30_000, Math.floor(ctx.idleTimeout.ms / 4)));
+  stopIdleWatchdog(ctx);
   const idleTimer = setInterval(() => {
-    if (!ctx.busy || !ctx.sessionId || ctx.exiting || ctx.agentDead || ctx.cancelRequested) return;
-    const silentFor = Date.now() - ctx.lastAgentActivity;
-    if (silentFor < ctx.idleTimeout.ms) return;
+    const decision = planIdleAction({
+      now: Date.now(),
+      lastActivity: ctx.lastAgentActivity,
+      busy: ctx.busy,
+      hasSession: ctx.sessionId !== null,
+      exiting: ctx.exiting,
+      agentDead: ctx.agentDead,
+      cancelRequested: ctx.cancelRequested,
+      awaitingUser: ctx.activePermission !== null || ctx.permissionQueue.length > 0 || ctx.menuActive,
+      runningTool: runningToolName(ctx),
+      idleMs: ctx.idleTimeout.ms,
+      toolMs: ctx.toolTimeout.ms,
+    });
+    if (decision.kind === "wait" || !ctx.sessionId) return;
     ctx.cancelRequested = true;
-    ctx.transcript.addChild(new Text(
-      pc.yellow(`⚠ no agent activity for ${Math.round(silentFor / 60_000)} min — cancelling the turn`),
-      1, 0,
-    ));
+    ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${decision.reason}`), 1, 0));
     setLoader(ctx, "cancelling…");
     ctx.client.cancel(ctx.sessionId);
     ctx.tui.requestRender();
-  }, checkEvery);
+  }, WATCHDOG_TICK_MS);
   // Never keep the process alive by itself: the chat owns the lifetime.
   (idleTimer as unknown as { unref?: () => void }).unref?.();
+  ctx.idleTimer = idleTimer;
 }
 
 // ─── Agent exit & shutdown ───────────────────────────────────────────────────

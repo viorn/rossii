@@ -22,6 +22,7 @@ import {
   persistSelection,
 } from "./chat-extensions";
 import { closeThought, closeMessage, closeUser, resetTranscript, renderHeader, renderStatus } from "./chat-stream";
+import { resyncTimeouts } from "./timeout-state";
 import type { ChatContext } from "./chat-context";
 import type { AcpChatOptions } from "./chat-context";
 import type { SessionSet } from "../rossii-config";
@@ -219,6 +220,10 @@ export async function changeSet(ctx: ChatContext, setName: string | undefined): 
   // `changeSet("none")` leaves `newSet` undefined, so the key is ""; "default"
   // is the sentinel; anything else is the set's name.
   ctx.currentSetKey = useDefault ? DEFAULT_PROFILE_SENTINEL : (newSet?.name ?? "");
+  // The set may carry its own watchdog defaults (env and the project file still
+  // win over them). The watchdog reads the context every tick, so re-resolving
+  // is all it takes.
+  resyncTimeouts(ctx);
   persistSelection(ctx);
 
   renderHeader(ctx);

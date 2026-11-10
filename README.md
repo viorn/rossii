@@ -157,8 +157,12 @@ set/provider/model from the project's history, and keeps everything changeable f
   does nothing and the draft stays in the composer.
 - **History** — resuming replays the conversation into the chat; sessions are read straight from
   `sessions.db`, so sessions created by `goose` itself are listed too.
-- **Watchdogs** — a silent agent (no update for 5 minutes) is cancelled, and one turn is capped at
-  4 hours. Both are configurable, both can be disabled.
+- **Watchdogs** — a silent agent is cancelled (5 minutes), but only when it is really silent: a
+  permission prompt waiting for you, an open menu or a **tool call that is still running** (its own
+  30-minute threshold) is not silence, so a `sleep 600` or a long build is never cut short. One turn
+  is capped at 4 hours. `/timeout 30m` changes the idle guard, `/timeout tool 1h` the tool one, and
+  the value is saved for the directory (`/timeout reset` forgets it); `ROSSII_ACP_*_TIMEOUT_MS`
+  overrides them for a single run and the chat says so.
 
 ### Thinking and tool blocks
 
@@ -207,6 +211,7 @@ The menu is a shortcut for typing, not a filter: type the commands out in full a
 | `/fetch` | Fetch the model list from the provider's own API (same as `/model fetch`) |
 | `/think [expand\|collapse] [all]` | Expand/collapse thinking blocks (bare `/think` toggles the last one) |
 | `/tool [toggle\|expand\|collapse] [all]` | Expand/collapse tool call blocks (bare `/tool` toggles the last one, `all` covers the conversation) |
+| `/timeout [30m\|reset]` · `/timeout tool 1h` | Watchdog values: idle (default target) or the tool guard; saved for this directory |
 | `/settings` (alias of `/config`) | Same menu as `/config` |
 | `/help` | List the commands — the chat's and goose's |
 
@@ -444,7 +449,8 @@ but the one that built them.
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `ROSSII_ACP_MODE` | `acp` | `classic` hands the terminal to `goose session` instead of rossii's chat |
-| `ROSSII_ACP_IDLE_TIMEOUT_MS` | `300000` | cancel a turn when the agent sends nothing for this long (`0` disables) |
+| `ROSSII_ACP_IDLE_TIMEOUT_MS` | `300000` | cancel a turn when the agent sends nothing for this long (`0` disables); beats `/timeout` and the saved value |
+| `ROSSII_ACP_TOOL_TIMEOUT_MS` | `1800000` | the same while a tool call is still running (`0` = only the 4-hour cap) |
 | `ROSSII_ACP_PROMPT_TIMEOUT_MS` | `14400000` | absolute cap on a single turn (`0` disables) |
 | `ROSSII_ACP_STEER` | `1` | `0` disables steering: Enter during a turn adds nothing to it |
 | `ROSSII_ACP_BLOCKS` | `closed` | when the thinking and tool blocks are open: `live` (1) \| `open` (2) \| `done` (3) \| `closed` (4) |
@@ -492,7 +498,8 @@ rossii (Bun + pi-tui) ── stdio JSON-RPC 2.0 ──> goose acp
 | `src/acp/thought.ts` | the collapsible thinking block (`/think`) |
 | `src/acp/tool-call-block.ts` | the collapsible tool call block (`/tool`) |
 | `src/acp/tool-call-content.ts` | the wire shapes behind a tool block (content, diffs, live output) |
-| `src/acp/timeouts.ts` | turn watchdogs |
+| `src/acp/timeouts.ts` | turn watchdogs: parsing, precedence, the guard decision (pure) |
+| `src/acp/timeout-state.ts` | which layer a watchdog value came from (env, project, set) |
 | `src/launcher.ts` | shared launch preparation (worktree, env, secrets) and the classic mode |
 | `src/index.ts` | CLI flags, mode resolution and the step loop (a thin `main`) |
 | `src/wizard-steps.ts` | wizard steps 1–5 (session, name, set, provider, model) |

@@ -67,6 +67,10 @@ export function showNextPermission(ctx: ChatContext): void {
     if (finished) return;
     finished = true;
     ctx.activePermission = null;
+    // The idle watchdog does not count "waiting for the user" as silence; the
+    // silence window starts again from the answer, so a prompt left open for
+    // an hour does not cancel the turn on the next tick.
+    ctx.lastAgentActivity = Date.now();
     ctx.tui.hideOverlay();
     ctx.tui.setFocus(ctx.editor);
     next.resolve(response);

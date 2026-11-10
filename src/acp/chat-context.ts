@@ -22,13 +22,8 @@ import type { ThoughtBlock } from "./thought";
 import type { ToolCallBlock } from "./tool-call-block";
 import { parseBlockMode, type BlockMode } from "./block-mode";
 import type { GooseCommand } from "./slash-commands";
-import {
-  DEFAULT_IDLE_TIMEOUT_MS,
-  DEFAULT_TURN_TIMEOUT_MS,
-  IDLE_TIMEOUT_ENV,
-  TURN_TIMEOUT_ENV,
-  resolveTimeoutMs,
-} from "./timeouts";
+import { buildTimeouts } from "./timeout-state";
+import type { ResolvedTimeout } from "./timeouts";
 
 // ─── PendingSteer ────────────────────────────────────────────────────────────
 
@@ -271,8 +266,14 @@ export interface ChatContext {
   pendingPrompt: string | null;
 
   // ── Configuration ──
-  idleTimeout: { ms: number; invalid: string | null };
-  turnTimeout: { ms: number; invalid: string | null };
+  /** Effective idle guard: env > project (`/timeout`) > set > built-in. */
+  idleTimeout: ResolvedTimeout;
+  /** Effective tool guard: same layers, 30 min by default (see ./timeouts.ts). */
+  toolTimeout: ResolvedTimeout;
+  /** Absolute cap on one turn; environment only, no chat switch. */
+  turnTimeout: ResolvedTimeout;
+  /** The armed idle watchdog (`startIdleWatchdog`), cleared by shutdown. */
+  idleTimer: ReturnType<typeof setInterval> | null;
   lastAgentActivity: number;
   escArmedExit: boolean;
   exitHintShown: boolean;
@@ -346,6 +347,9 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
   // `ROSSII_ACP_BLOCKS` decides the automatic expanded state of the thought
   // and tool blocks; a typo warns and keeps the default (see ./block-mode.ts).
   const blockMode = parseBlockMode(env("ACP_BLOCKS"));
+  // Watchdog layers are read once here; `/timeout` and `/set` re-resolve them
+  // through ./timeout-state.ts.
+  const timeouts = buildTimeouts(opts.set);
   return {
     // Core flags
     busy: false,
@@ -408,8 +412,10 @@ export function createChatContext(opts: AcpChatOptions): ChatContext {
     // Configuration (watchdogs; the invalid-value warnings are printed by
     // chat-ui on start). `lastAgentActivity` is refreshed by every
     // session/update, so only a *silent* agent is cancelled by the idle guard.
-    idleTimeout: resolveTimeoutMs(env("ACP_IDLE_TIMEOUT_MS"), DEFAULT_IDLE_TIMEOUT_MS, IDLE_TIMEOUT_ENV),
-    turnTimeout: resolveTimeoutMs(env("ACP_PROMPT_TIMEOUT_MS"), DEFAULT_TURN_TIMEOUT_MS, TURN_TIMEOUT_ENV),
+    idleTimeout: timeouts.idle,
+    toolTimeout: timeouts.tool,
+    turnTimeout: timeouts.turn,
+    idleTimer: null,
     lastAgentActivity: 0,
     escArmedExit: false,
     exitHintShown: false,

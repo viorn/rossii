@@ -13,17 +13,13 @@ import pc from "picocolors";
 import pkg from "../package.json";
 import { env } from "./utils";
 import { getConfigProviders, getDiscoveredCustomProviders, getGooseConfigPath } from "./config";
-import { getRossiiPaths, listSessionSets, readRossiiConfig } from "./rossii-config";
+import { DEFAULT_PROFILE_SENTINEL, getRossiiPaths, getSessionSet, listSessionSets, readRossiiConfig } from "./rossii-config";
+import { readProjectMeta } from "./project";
 import { getAllSessions, getSessionsDbPath } from "./sessions";
 import { getRepoRoot, getWorktreeSessionNames, getWorktreeState, isInsideGitRepo } from "./worktree";
 import { parseBlockMode, BLOCK_MODE_ENV } from "./acp/block-mode";
-import {
-  resolveTimeoutMs,
-  DEFAULT_IDLE_TIMEOUT_MS,
-  DEFAULT_TURN_TIMEOUT_MS,
-  IDLE_TIMEOUT_ENV,
-  TURN_TIMEOUT_ENV,
-} from "./acp/timeouts";
+import { buildTimeouts, timeoutWarnings } from "./acp/timeout-state";
+import { describeTimeout } from "./acp/timeouts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -77,13 +73,9 @@ function configWarnings(): string[] {
     warnings.push(`ROSSII_ACP_STEER="${steer}" is not 0 or 1 — steering stays on`);
   }
 
-  for (const [raw, fallback, name] of [
-    [env("ACP_IDLE_TIMEOUT_MS"), DEFAULT_IDLE_TIMEOUT_MS, IDLE_TIMEOUT_ENV],
-    [env("ACP_PROMPT_TIMEOUT_MS"), DEFAULT_TURN_TIMEOUT_MS, TURN_TIMEOUT_ENV],
-  ] as const) {
-    const resolved = resolveTimeoutMs(raw, fallback, name);
-    if (resolved.invalid) warnings.push(resolved.invalid);
-  }
+  // A typo in a timeout variable, and an environment value that shadows what
+  // `/timeout` saved for this directory — the same two the chat prints at start.
+  warnings.push(...timeoutWarnings(effectiveTimeouts()));
 
   if (env("NO_WORKTREE") === "1" && env("FORCE_WORKTREE") === "1") {
     warnings.push("ROSSII_NO_WORKTREE=1 and ROSSII_FORCE_WORKTREE=1 are both set — the force flag wins");
@@ -97,6 +89,23 @@ function configWarnings(): string[] {
   }
 
   return warnings;
+}
+
+/**
+ * The watchdog values this directory would actually run with: the same
+ * precedence as the chat (environment > project file > set > default). The set
+ * is the last one used here, which is what the wizard would pre-select.
+ */
+function effectiveTimeouts(): ReturnType<typeof buildTimeouts> {
+  let setName: string | undefined;
+  try {
+    setName = readProjectMeta()?.setHistory?.[0];
+  } catch {
+    setName = undefined;
+  }
+  const set =
+    setName && setName !== "" && setName !== DEFAULT_PROFILE_SENTINEL ? getSessionSet(setName) : undefined;
+  return buildTimeouts(set);
 }
 
 /** `ROSSII_*` values that are actually set in this shell. */
@@ -155,6 +164,9 @@ export function runDoctor(): number {
     sets = Object.keys(listSessionSets());
   } catch { /* reported as empty */ }
   line("sets", sets.length > 0 ? `${sets.length} (${sets.join(", ")})` : pc.dim("none"));
+
+  const timeouts = effectiveTimeouts();
+  line("timeouts", `idle ${describeTimeout(timeouts.idle)}\n               tool ${describeTimeout(timeouts.tool)}\n               cap  ${describeTimeout(timeouts.turn)}`);
 
   // ── sessions DB ──────────────────────────────────────────────────────────
   const db = getSessionsDbPath();

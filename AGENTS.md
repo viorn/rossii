@@ -66,6 +66,8 @@ systemPrompt: Instructions for the agent...
 builtins: [developer, analyze, memory]              # bundled Goose builtins
 extensions: [fetch]                                 # names from ~/.config/goose/config.yaml
 stdioExtensions: ["mcpls --trust-project-config"]   # raw --with-extension commands
+idleTimeoutMs: 1800000                              # optional default for the idle watchdog
+toolMs: 1800000                                     # optional default for the tool watchdog
 ```
 
 - `systemPrompt` → passed via `--system`
@@ -142,7 +144,8 @@ warns in the TUI and keeps the ACP default.
   on provider create/update/delete, so a model written by `/model fetch` would otherwise
   vanish from the menu — pure and unit-tested),
   `overlay.ts` (framed / searchable lists),
-  `timeouts.ts` (turn watchdogs), `thought.ts` · `tool-call-block.ts` ·
+  `timeouts.ts` (turn watchdogs: parsing, precedence, `planIdleAction`), `timeout-state.ts`
+  (which layer won: env / project / set), `thought.ts` · `tool-call-block.ts` ·
   `tool-call-content.ts` (the collapsible thinking and tool blocks)
 - The chat itself is one module per responsibility, all sharing a `ChatContext`
   (`chat-context.ts`: the mutable state, themes, constants, `createChatContext`):
@@ -274,7 +277,7 @@ warns in the TUI and keeps the ACP default.
     (`mode: "set"`, key `rossii`); empty text clears it — same "set is source of
     truth" semantics as classic `--system`. A failure here is non-fatal (warning only)
 - **Slash commands** — rossii answers its own (`/config`, `/model`, `/provider`, `/set`,
-  `/session`, `/rename`, `/fork`, `/think`, `/tool`, `/edit`, `/fetch`, `/help`) and sends
+  `/session`, `/rename`, `/fork`, `/think`, `/tool`, `/timeout`, `/edit`, `/fetch`, `/help`) and sends
   **everything else that starts with `/` to the agent as a plain prompt**, so goose's own
   commands work: `/compact`, `/clear`, `/status`, `/doctor`, `/goal`, `/grind`, `/prompts`,
   `/prompt`, `/skills` and the slash commands goose builds from recipes and skills (see
@@ -382,12 +385,35 @@ warns in the TUI and keeps the ACP default.
   (no worktree sandbox; write creates parent dirs). A read honours ACP `line`/`limit` and
   defaults to 2000 lines (the ACP default), so one huge file cannot flood the context.
   ACP clients are trusted — MCP servers effectively get the same access
-- Two watchdogs bound a turn (`src/acp/timeouts.ts`); both are disabled by `0`, and a
-  malformed value warns in the chat instead of silently switching the guard off:
+- Two watchdogs bound a turn (`src/acp/timeouts.ts`, pure and unit-tested in
+  `scripts/acp-timeouts-test.ts`); both are disabled by `0`, and a malformed value warns in the
+  chat instead of silently switching the guard off. The decision is `planIdleAction()`, the
+  watchdog itself is `startIdleWatchdog()` in `chat-ui.ts` (one second tick, reading the
+  *current* thresholds, so `/timeout` applies on the next tick without re-arming):
   - `ROSSII_ACP_IDLE_TIMEOUT_MS` (default 5 min) — no `session/update` from the agent for
-    that long → `session/cancel`; a long but *live* turn is never interrupted
+    that long → `session/cancel`
+  - `ROSSII_ACP_TOOL_TIMEOUT_MS` (default 30 min) — the same while a tool call is still
+    running. A tool call counts as running while its block is **not finished**: goose sends the
+    initial `tool_call` with status `pending` (`acp/server/tool_calls/conversion.rs`) and only
+    adds `in_progress` when something live happens, so a `sleep 600` is `pending` for ten
+    minutes and a status test would never match
+  - "the user owes an answer" is never silence either: `ctx.activePermission`,
+    `permissionQueue` and `ctx.menuActive` all hold the guard off, and answering a permission
+    restarts the silence window (`chat-handlers.ts`). Before this, a permission dialog left
+    open for six minutes cancelled the turn
   - `ROSSII_ACP_PROMPT_TIMEOUT_MS` (default 4 h) — absolute cap on a single turn; on
     timeout the client also sends `session/cancel` and the UI reports the error
+- Where a watchdog value comes from (strongest first, wired by `src/acp/timeout-state.ts`):
+  the environment → `timeouts` in the project meta (`~/.config/rossii/projects/<dir>-<hash>.json`,
+  written by `/timeout`) → the set's `idleTimeoutMs` / `toolMs` → the built-in constant.
+  The environment deliberately wins (`ROSSII_ACP_IDLE_TIMEOUT_MS=0 rossii` is the "just this run"
+  switch) and the chat says so twice: a start-up warning, and a `⚠` after `/timeout` that names the
+  variable and notes that the saved value applies once it is unset. `writeProjectMeta()` rewrites
+  the project file from a fixed field list, so it carries `timeouts` over — without that the
+  setting vanished on the next wizard run
+- `/timeout [30m\|reset]`, `/timeout tool 1h` (`parseTimeoutCommand`/`parseTimeoutSpec`, units
+  required for anything but plain milliseconds) and the `/config` → Timeouts menu; `rossii doctor`
+  prints the same three effective values with their sources
 - `session/new` `_meta` is built by `newSessionMeta()` (`src/acp/session-meta.ts`) and stays FLAT:
   goose reads session fields at the top level (`_meta.goose` is only for initialize
   capabilities), so a nested `client` used to leave the session `Acp` — invisible to

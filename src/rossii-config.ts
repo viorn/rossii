@@ -90,6 +90,14 @@ export interface SessionSet {
    * Example: "mcpls --trust-project-config" or "mcpls:mcpls --trust-project-config"
    */
   stdioExtensions?: string[];
+  /**
+   * Default for the chat's idle watchdog (ms; 0 = off). Only a default: a value
+   * saved in the project with `/timeout` — and `ROSSII_ACP_IDLE_TIMEOUT_MS`
+   * above it — wins over it.
+   */
+  idleTimeoutMs?: number;
+  /** Default for the tool watchdog (ms; 0 = only the hard cap). */
+  toolMs?: number;
 }
 
 export interface RossiiConfig {
@@ -154,10 +162,15 @@ function getSetFilePath(name: string): { path: string; ext: string } | undefined
   return undefined;
 }
 
+/** A timeout from a set file: a non-negative finite number of ms, else ignored. */
+function normalizeMs(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return value;
+}
+
 /**
  * Read a session set file in any supported format (JSON or YAML).
  * Returns parsed SessionSet or undefined on failure.
- *
  * `name` is optional in the file: hand-written YAML (the shape shown in the
  * docs) usually omits it, and the file name is the canonical slug, so it is
  * used as the fallback.
@@ -188,6 +201,8 @@ function readSetFile(filePath: string): SessionSet | undefined {
         builtins: data.builtins ?? data.builtin_extensions ?? [],
         extensions: data.extensions ?? data.gooseExtensions ?? data.goose_extensions ?? undefined,
         stdioExtensions: data.stdioExtensions ?? data.stdio_extensions ?? undefined,
+        idleTimeoutMs: normalizeMs(data.idleTimeoutMs ?? data.idle_timeout_ms),
+        toolMs: normalizeMs(data.toolMs ?? data.tool_ms),
       };
     }
     return undefined;
@@ -240,6 +255,8 @@ export function saveSessionSet(set: SessionSet): void {
   if (set.systemPrompt) yamlObj.systemPrompt = set.systemPrompt;
   if (set.extensions && set.extensions.length > 0) yamlObj.extensions = set.extensions;
   if (set.stdioExtensions && set.stdioExtensions.length > 0) yamlObj.stdioExtensions = set.stdioExtensions;
+  if (typeof set.idleTimeoutMs === "number") yamlObj.idleTimeoutMs = set.idleTimeoutMs;
+  if (typeof set.toolMs === "number") yamlObj.toolMs = set.toolMs;
 
   const yaml = yamlDump(yamlObj, {
     indent: 2,

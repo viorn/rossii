@@ -4,7 +4,8 @@
  * Functions: showMenu, changeModel, changeProvider, currentProviderConfig,
  * fetchModelsForCurrentProvider, applyFetchedModel, showConfigMenu,
  * showProviderMenu, showModelMenu, showSetMenu, showSessionMenu,
- * submitGooseCommand, showCommandsHelp, handleCommand.
+ * submitGooseCommand, showCommandsHelp, handleCommand, and the `/timeout`
+ * command (printTimeouts, changeTimeout, showTimeoutsMenu).
  */
 
 import pc from "picocolors";
@@ -20,6 +21,9 @@ import { persistSelection } from "./chat-extensions";
 import { framed } from "./chat-handlers";
 import { promptInEditor, queuePrompt, submitPrompt } from "./chat-io";
 import { commandRewritesHistory, formatGooseCommandNames } from "./slash-commands";
+import { currentTimeouts, resyncTimeouts } from "./timeout-state";
+import { describeTimeout, formatDuration, parseTimeoutCommand, parseTimeoutSpec, type TimeoutKind } from "./timeouts";
+import { writeProjectTimeouts } from "../project";
 import { SearchableList } from "./overlay";
 import { mergeModelOptions, orderByUsage, orderModelMenu } from "./model-options";
 import { selectListTheme } from "./chat-context";
@@ -184,6 +188,7 @@ export function showConfigMenu(ctx: ChatContext): void {
     { value: "provider", label: "Change Provider" },
     { value: "model", label: "Change Model" },
     { value: "effort", label: "Change Thinking Effort" },
+    { value: "timeouts", label: "Change Timeouts" },
     { value: "set", label: "Change Set" },
     { value: "session", label: "Change Session" },
   ], (value) => {
@@ -191,6 +196,7 @@ export function showConfigMenu(ctx: ChatContext): void {
       case "provider": showProviderMenu(ctx); break;
       case "model": showModelMenu(ctx); break;
       case "effort": showEffortMenu(ctx); break;
+      case "timeouts": showTimeoutsMenu(ctx); break;
       case "set": showSetMenu(ctx); break;
       case "session": showSessionMenu(ctx); break;
     }
@@ -443,13 +449,131 @@ export function submitGooseCommand(ctx: ChatContext, text: string): void {
   void submitPrompt(ctx, text);
 }
 
+// ─── Timeouts ────────────────────────────────────────────────────────────────
+
+const TIMEOUT_PRESETS = ["30s", "5m", "15m", "30m", "1h", "2h", "off"] as const;
+
+/** `/timeout` and the `/config` menu entry. */
+async function runTimeoutCommand(ctx: ChatContext, args: readonly string[]): Promise<void> {
+  const parsed = parseTimeoutCommand(args);
+  if ("error" in parsed) {
+    ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${parsed.error}`), 1, 0));
+    ctx.tui.requestRender();
+    return;
+  }
+  if (parsed.action === "show") {
+    printTimeouts(ctx);
+    return;
+  }
+  if (parsed.action === "reset") {
+    if (parsed.kind !== "tool") await changeTimeout(ctx, "idle", null);
+    if (parsed.kind !== "idle") await changeTimeout(ctx, "tool", null);
+    return;
+  }
+  await changeTimeout(ctx, parsed.kind === "tool" ? "tool" : "idle", parsed.ms ?? 0);
+}
+
+/** `idle 5m (env …)` / `tool 30m (project)` / `hard cap 4h (default)`. */
+export function printTimeouts(ctx: ChatContext): void {
+  const state = currentTimeouts(ctx);
+  for (const [label, resolved] of [
+    ["idle", state.idle],
+    ["tool", state.tool],
+    ["hard cap", state.turn],
+  ] as const) {
+    ctx.transcript.addChild(new Text(pc.dim(`${label.padEnd(8)} ${describeTimeout(resolved)}`), 1, 0));
+  }
+  ctx.transcript.addChild(new Text(
+    pc.dim("/timeout 30m · /timeout tool 1h · /timeout reset [idle|tool] — `off` disables"),
+    1, 0,
+  ));
+  ctx.tui.requestRender();
+}
+
+/**
+ * Apply a new watchdog value from the chat.
+ *
+ * The value is always saved for the project — that is what makes `/timeout`
+ * worth typing — but when the environment sets the same watchdog the
+ * environment still wins, and the chat says so instead of pretending the value
+ * took effect (the saved one applies as soon as the variable is unset).
+ */
+export async function changeTimeout(ctx: ChatContext, kind: TimeoutKind, ms: number | null): Promise<void> {
+  try {
+    writeProjectTimeouts(kind === "idle" ? { idleMs: ms } : { toolMs: ms });
+  } catch (error) {
+    ctx.transcript.addChild(new Text(
+      pc.yellow(`⚠ Could not save the timeout for this project: ${String((error as Error)?.message ?? error)}`),
+      1, 0,
+    ));
+    ctx.tui.requestRender();
+    return;
+  }
+
+  const state = resyncTimeouts(ctx);
+  const resolved = kind === "idle" ? state.idle : state.tool;
+  const cleared = ms === null ? "project value cleared" : `saved ${formatDuration(ms)} for this project`;
+
+  if (resolved.source === "env") {
+    ctx.transcript.addChild(new Text(
+      pc.yellow(
+        `⚠ ${kind} timeout stays ${formatDuration(resolved.ms)} — ${resolved.env} overrides /timeout (${cleared}; it applies once the variable is unset)`,
+      ),
+      1, 0,
+    ));
+  } else {
+    const origin =
+      resolved.source === "set" ? "from the set" :
+      resolved.source === "project" ? "saved for this project" :
+      "default";
+    ctx.transcript.addChild(new Text(
+      pc.dim(`⚙ ${kind} timeout → ${formatDuration(resolved.ms)} (${origin})${ms === null ? ` — ${cleared}` : ""}`),
+      1, 0,
+    ));
+  }
+  ctx.tui.requestRender();
+}
+
+export function showTimeoutsMenu(ctx: ChatContext): void {
+  const state = currentTimeouts(ctx);
+  showMenu(ctx, "Timeouts", [
+    { value: "idle", label: `Idle timeout — ${describeTimeout(state.idle)}` },
+    { value: "tool", label: `Tool timeout — ${describeTimeout(state.tool)}` },
+    { value: "hard", label: `Hard cap — ${describeTimeout(state.turn)}` },
+  ], (value) => {
+    if (value === "idle" || value === "tool") showTimeoutPresets(ctx, value);
+  });
+}
+
+function showTimeoutPresets(ctx: ChatContext, kind: TimeoutKind): void {
+  const items = [
+    ...TIMEOUT_PRESETS.map((value) => ({ value, label: value })),
+    { value: "reset", label: "Reset (back to the set / default)" },
+    { value: "cancel", label: "Cancel" },
+  ];
+  showMenu(ctx, kind === "idle" ? "Idle timeout" : "Tool timeout", items, async (value) => {
+    if (value === "cancel") return;
+    if (value === "reset") {
+      await changeTimeout(ctx, kind, null);
+      return;
+    }
+    const parsed = parseTimeoutSpec(value);
+    if ("error" in parsed) {
+      ctx.transcript.addChild(new Text(pc.yellow(`⚠ ${parsed.error}`), 1, 0));
+      ctx.tui.requestRender();
+      return;
+    }
+    await changeTimeout(ctx, kind, parsed.ms);
+  });
+}
+
 /**
  * `/help` — the same two lists the composer's completion menu offers
  * (./command-complete.ts), printed for reading.
  */
 export function showCommandsHelp(ctx: ChatContext): void {
   ctx.transcript.addChild(new Text(
-    pc.dim("The chat: ") + "/config /model /provider /set /session /rename /fork /think /tool /edit /fetch /help",
+    pc.dim("The chat: ") + "/config /model /provider /set /session /rename /fork /think /tool /timeout /edit /fetch /help",
     1, 0,
   ));
   ctx.transcript.addChild(new Text(
@@ -540,6 +664,9 @@ export async function handleCommand(ctx: ChatContext, text: string): Promise<voi
       return;
     case "think":
       toggleAllThoughts(ctx, args);
+      return;
+    case "timeout":
+      await runTimeoutCommand(ctx, args);
       return;
     case "tool":
       toggleAllTools(ctx, args);

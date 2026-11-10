@@ -34,6 +34,17 @@ export function hasEnv(name: string): boolean {
   return env(name) !== undefined;
 }
 
+/**
+ * The spelling the setting is present under — `ROSSII_<name>` or the legacy
+ * `CGOOSE_<name>` — so a warning can name the variable the user actually set.
+ */
+export function envVarName(name: string): string | undefined {
+  const current = `ROSSII_${name}`;
+  if (process.env[current] !== undefined) return current;
+  const legacy = `CGOOSE_${name}`;
+  return process.env[legacy] !== undefined ? legacy : undefined;
+}
+
 /** Set a setting under the new spelling and drop the legacy one. */
 export function setEnv(name: string, value: string | undefined): void {
   if (value === undefined) {

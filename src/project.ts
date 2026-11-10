@@ -35,6 +35,18 @@ export interface ProjectMeta {
   setHistory: string[];
   /** Maps session name → worktree path (created via rossii git worktree integration) */
   worktrees?: Record<string, string>;
+  /** Watchdog values set with `/timeout` in this directory; absent = inherit. */
+  timeouts?: ProjectTimeouts;
+}
+
+/**
+ * Chat watchdogs saved for this directory. Both are optional and independent:
+ * a missing key means "not set here", so the set's default (or the built-in
+ * one) applies — and `ROSSII_ACP_*_TIMEOUT_MS` above them all.
+ */
+export interface ProjectTimeouts {
+  idleMs?: number;
+  toolMs?: number;
 }
 
 // ─── Project key ─────────────────────────────────────────────────────────────
@@ -118,13 +130,76 @@ export function writeProjectMeta(provider: string, model: string, sessionSet?: s
 
   // Preserve existing worktree mappings when merging
   const worktrees = existing?.worktrees ?? {};
-  
+
   writeFileSync(path, JSON.stringify({
     modelHistory,
     providerHistory: newProviderHistory,
     setHistory: newSetHistory,
     worktrees,
+    // `/timeout` writes its own key; rewriting the file without it would make
+    // the setting vanish on the next wizard run.
+    ...(existing?.timeouts ? { timeouts: existing.timeouts } : {}),
   }, null, 2) + "\n");
+}
+
+// ─── Timeouts (set from the chat with `/timeout`) ────────────────────────────
+
+/** Watchdog values saved for this directory (empty object when none are). */
+export function readProjectTimeouts(): ProjectTimeouts {
+  const path = getProjectMetaPath();
+  if (!existsSync(path)) return {};
+  try {
+    const meta = JSON.parse(readFileSync(path, "utf-8")) as ProjectMeta;
+    const saved = meta.timeouts;
+    if (!saved || typeof saved !== "object") return {};
+    const out: ProjectTimeouts = {};
+    if (typeof saved.idleMs === "number" && Number.isFinite(saved.idleMs) && saved.idleMs >= 0) {
+      out.idleMs = saved.idleMs;
+    }
+    if (typeof saved.toolMs === "number" && Number.isFinite(saved.toolMs) && saved.toolMs >= 0) {
+      out.toolMs = saved.toolMs;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save (or forget, with `null`) one watchdog value for this directory.
+ *
+ * Merges into the existing file like `saveWorktreeMapping` — `writeProjectMeta`
+ * rewrites it wholesale and would drop other keys — and removes the `timeouts`
+ * object entirely once nothing is saved, so the file does not accumulate
+ * empty shells.
+ */
+export function writeProjectTimeouts(patch: { idleMs?: number | null; toolMs?: number | null }): void {
+  const dir = ROSSII_PROJECTS_DIR;
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const path = getProjectMetaPath();
+
+  let meta: Record<string, any> = {};
+  if (existsSync(path)) {
+    try {
+      meta = JSON.parse(readFileSync(path, "utf-8"));
+    } catch {
+      meta = {};
+    }
+  }
+
+  const current: ProjectTimeouts =
+    meta.timeouts && typeof meta.timeouts === "object" ? { ...meta.timeouts } : {};
+
+  for (const [key, value] of Object.entries(patch) as Array<["idleMs" | "toolMs", number | null | undefined]>) {
+    if (value === undefined) continue;
+    if (value === null) delete current[key];
+    else current[key] = value;
+  }
+
+  if (Object.keys(current).length > 0) meta.timeouts = current;
+  else delete meta.timeouts;
+
+  writeFileSync(path, JSON.stringify(meta, null, 2) + "\n");
 }
 
 // ─── Worktree mapping ─────────────────────────────────────────────────────────
