@@ -275,7 +275,11 @@ warns in the TUI and keeps the ACP default.
     extensions leaked in (a goose that ignores the field) or expected ones are missing
   - system prompt → goose custom request `_goose/unstable/session/system-prompt/set`
     (`mode: "set"`, key `rossii`); empty text clears it — same "set is source of
-    truth" semantics as classic `--system`. A failure here is non-fatal (warning only)
+    truth" semantics as classic `--system`. A failure here is non-fatal (warning only).
+    `mode: "set"` **ignores `key`** and replaces goose's base prompt, so the legacy
+    `cgoose` entry (written as an *append* extra) is cleared with `mode: "append"` +
+    empty text: clearing it with `mode: "set"` + empty text wiped the prompt that had
+    just been applied (3.5.2 and earlier — the set's prompt never reached the agent)
 - **Slash commands** — rossii answers its own (`/config`, `/model`, `/provider`, `/set`,
   `/session`, `/rename`, `/fork`, `/think`, `/tool`, `/timeout`, `/edit`, `/fetch`, `/help`) and sends
   **everything else that starts with `/` to the agent as a plain prompt**, so goose's own

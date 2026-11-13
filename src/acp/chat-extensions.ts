@@ -183,11 +183,17 @@ export async function verifySessionExtensions(ctx: ChatContext, id: string): Pro
 /**
  * Apply the set's system prompt, and drop the one stored under the pre-3.0
  * `cgoose` key.
+ *
+ * The legacy entry was written as an *append* extra, so it is cleared with
+ * `mode: "append"` + empty text. `mode: "set"` ignores `key` entirely: goose
+ * treats empty text there as "clear the override", so the old cleanup call
+ * wiped the prompt it had just applied (the set's prompt never reached the
+ * agent, and the session row kept `system_prompt_override = NULL`).
  */
 export async function applySystemPrompt(ctx: ChatContext, id: string, text: string): Promise<void> {
   await setSessionSystemPrompt(ctx.client, id, { mode: "set", key: PROMPT_KEY, text });
   try {
-    await setSessionSystemPrompt(ctx.client, id, { mode: "set", key: LEGACY_PROMPT_KEY, text: "" });
+    await setSessionSystemPrompt(ctx.client, id, { mode: "append", key: LEGACY_PROMPT_KEY, text: "" });
   } catch {
     // nothing stored under the legacy key — fine
   }
