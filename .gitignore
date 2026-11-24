@@ -8,3 +8,4 @@ ${OUTFILE}
 .worktree/
 .serena/
 .gigacode_vsc/
+.agents/protocols/
