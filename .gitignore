@@ -9,3 +9,4 @@ ${OUTFILE}
 .serena/
 .gigacode_vsc/
 .agents/protocols/
+task_log.txt
